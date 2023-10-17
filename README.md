@@ -2,9 +2,9 @@
 DS 5500 Capstone: Fantasy Football for Everyone
 
 Fantasy Points Dataframe Variables:
-* game_id                  chr
-* play_id                  num
-* player_id                chr
+* game_id                  |chr
+* play_id                  |num
+* player_id                |chr
 * player_name              chr
 * points                   num
 * home_team                chr
