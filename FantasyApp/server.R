@@ -21,4 +21,9 @@ server <- shinyServer(function(input, output, session) {
     fantasy_points
   })
   
+  
+  output$input_a <- renderPrint({
+    input$select
+  })
+  
 })
