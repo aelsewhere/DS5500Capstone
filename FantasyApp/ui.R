@@ -12,63 +12,32 @@ ui <- grid_page(
     "sidebar area3  area3 ",
     "sidebar area3  area3 "
   ),
-  row_sizes = c("45px",
-                "1fr",
-                "1fr",
-                "1fr"),
-  col_sizes = c("210px",
-                "1.47fr",
-                "0.53fr"),
+  row_sizes = c(
+    "45px",
+    "1fr",
+    "1fr",
+    "1fr"
+  ),
+  col_sizes = c(
+    "210px",
+    "1.47fr",
+    "0.53fr"
+  ),
   gap_size = "1rem",
   grid_card(
     area = "sidebar",
     h3("My Roster"),
     card_body(
-      textInput(
-        inputId = "myRosterQB",
-        label = "Quarterback",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterRB1",
-        label = "Running Back",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterRB2",
-        label = "Running Back",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterWR1",
-        label = "Wide Receiver",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterWR2",
-        label = "Wide Receiver",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterTE",
-        label = "Tight End",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterFlex",
-        label = "Flex",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterDST",
-        label = "Defense/Special Team",
-        value = ""
-      ),
-      textInput(
-        inputId = "myRosterK",
-        label = "Kicker",
-        value = ""
-      )
+      textInput("myRosterQB", "Quarterback", ""),
+      textInput("myRosterRB1", "Running Back", ""),
+      textInput("myRosterRB2", "Running Back", ""),
+      textInput("myRosterWR1", "Wide Receiver", ""),
+      textInput("myRosterWR2", "Wide Receiver", ""),
+      textInput("myRosterTE", "Tight End", ""),
+      textInput("myRosterFlex", "Flex", ""),
+      textInput("myRosterDST", "Defense/Special Team", ""),
+      textInput("myRosterK", "Kicker", ""),
+      actionButton("submit", "Submit", class = "btn-primary")
     ),
     card_footer()
   ),
@@ -78,14 +47,21 @@ ui <- grid_page(
     alignment = "start",
     is_title = TRUE
   ),
-  grid_card(area = "area3",
-            card_body(
-              tabsetPanel(
-                nav_panel(title = "Upcoming Games"),
-                nav_panel(title = "Predictions"),
-                nav_panel(title = "Player Statistics"),
-                nav_panel(title = "Learn"),
-                nav_panel(title = "Data")
-              )
-            ))
+  grid_card(
+    area = "area3",
+    card_body(
+      tabsetPanel(
+        nav_panel(title = "Upcoming Games"),
+        nav_panel(title = "Predictions"),
+        nav_panel(title = "Player Statistics"),
+        navbarMenu(
+          title = "Learn",
+          tabPanel("About the Game"),
+          tabPanel("About the App"),
+          tabPanel("About the Creators")
+        ),
+        nav_panel(title = "Data")
+      )
+    )
+  )
 )
