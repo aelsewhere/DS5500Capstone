@@ -20,14 +20,12 @@ library(shinyMobile)
 
 
 # Load UI ----------------------------------------
-ui <- source("ui.R")
+source("ui.R")
 
 
 # Server Logic -----------------------------------
-
-server <- source("server.R")
+source("server.R")
 
 
 # Run app ----------------------------------------
-
 shinyApp(ui=ui, server=server)
