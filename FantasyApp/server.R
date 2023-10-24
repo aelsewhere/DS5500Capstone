@@ -1,29 +1,36 @@
 # libraries
 library(shiny)
 library(ggplot2)
+library(shinyjs)
 
 
-
-# Define server
-
-server <- shinyServer(function(input, output, session) {
+server <- function(input, output, session) {
   # ----------------------------------------------
-  output$example_roster <- renderImage({
-    return(list(
-      src = "images/example_roster.png",
-      contentType = "image/png",
-      alt = "Roster"
-    ))
-  }, deleteFile = FALSE)
-  
-  
-  output$fantasy_points <- DT::renderDataTable({
-    fantasy_points
+  observe({
+    roster_filled <-
+      vapply(
+        mand_roster,
+        function(field) {
+          !is.null(input[[field]]) && input[[field]] != ""
+        },
+        logical(1)
+      )
+    roster_filled <- all(roster_filled)
+    toggleState(id = "submit", condition = roster_filled)
   })
-  
-  
-  output$input_a <- renderPrint({
-    input$select
-  })
-  
-})
+
+  output$example_roster <- renderImage(
+    {
+      return(list(
+        src = "images/example_roster.png",
+        contentType = "image/png",
+        alt = "Roster"
+      ))
+    },
+    deleteFile = FALSE
+  )
+
+  output$fantasy_points <- DT::renderDataTable({fantasy_points})
+
+  output$input_a <- renderPrint({input$select})
+}
