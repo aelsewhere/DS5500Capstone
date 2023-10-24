@@ -6,6 +6,8 @@ library(bslib)
 library(gridlayout)
 
 ui <- grid_page(
+  shinyjs::useShinyjs(),
+  shinyjs::inlineCSS(appCSS),
   layout = c(
     "header  header header",
     "sidebar area3  area3 ",
@@ -27,17 +29,18 @@ ui <- grid_page(
   grid_card(
     area = "sidebar",
     h3("My Roster"),
-    card_body(
-      textInput("myRosterQB", "Quarterback", ""),
-      textInput("myRosterRB1", "Running Back", ""),
-      textInput("myRosterRB2", "Running Back", ""),
-      textInput("myRosterWR1", "Wide Receiver", ""),
-      textInput("myRosterWR2", "Wide Receiver", ""),
-      textInput("myRosterTE", "Tight End", ""),
+    div(
+      id = "form",
+      textInput("myRosterQB", star_mand("Quarterback"), ""),
+      textInput("myRosterRB1", star_mand("Running Back"), ""),
+      textInput("myRosterRB2", star_mand("Running Back"), ""),
+      textInput("myRosterWR1", star_mand("Wide Receiver"), ""),
+      textInput("myRosterWR2", star_mand("Wide Receiver"), ""),
+      textInput("myRosterTE", star_mand("Tight End"), ""),
       textInput("myRosterFlex", "Flex", ""),
       textInput("myRosterDST", "Defense/Special Team", ""),
-      textInput("myRosterK", "Kicker", ""),
-      actionButton("submit", "Submit", class = "btn-primary")
+      textInput("myRosterK", star_mand("Kicker"), ""),
+      actionButton("submit", star_mand("Submit"), class = "btn-primary")
     ),
     card_footer()
   ),
