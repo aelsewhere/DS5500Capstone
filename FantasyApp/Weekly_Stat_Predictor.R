@@ -3,6 +3,7 @@ library(ggrepel)
 library(nflreadr)
 library(nflplotR)
 library(stringr)
+library(readr)
 
 
 options(scipen = 9999)
@@ -796,6 +797,7 @@ qb_pred <- qb_pred %>%
         (-2 * pred_sack_fumbles_lost)
     )
   )
+write.csv(qb_pred, "Data/qb_pred.csv")
 
 rb_pred <- rb_pred %>%
   mutate(
@@ -816,6 +818,7 @@ rb_pred <- rb_pred %>%
         (-2 * pred_sack_fumbles_lost)
     )
   )
+write.csv(rb_pred, "Data/rb_pred.csv")
 
 wr_pred <- wr_pred %>%
   mutate(
@@ -836,6 +839,7 @@ wr_pred <- wr_pred %>%
         (-2 * pred_sack_fumbles_lost)
     )
   )
+write.csv(wr_pred, "Data/wr_pred.csv")
 
 te_pred <- te_pred %>%
   mutate(
@@ -856,6 +860,9 @@ te_pred <- te_pred %>%
         (-2 * pred_sack_fumbles_lost)
     )
   )
+write.csv(te_pred, "Data/te_pred.csv")
+
+
 
 
 
