@@ -88,16 +88,16 @@ server <- function(input, output, session) {
     roster_k <<- input$myRosterK
   })
 
-  output$qb_pred_table <- renderTable({
+  output$qb_pred_table <- renderDataTable({
     read.csv("Data/qb_pred.csv")
   })
-  output$wr_pred_table <- renderTable({
+  output$wr_pred_table <- renderDataTable({
     read.csv("Data/wr_pred.csv")
   })
-  output$te_pred_table <- renderTable({
+  output$te_pred_table <- renderDataTable({
     read.csv("Data/te_pred.csv")
   })
-  output$rb_pred_table <- renderTable({
+  output$rb_pred_table <- renderDataTable({
     read.csv("Data/rb_pred.csv")
   })
   
