@@ -33,14 +33,21 @@ ui <- grid_page(
       id = "form",
       textInput("myRosterQB", star_mand("Quarterback"), ""),
       textInput("myRosterRB1", star_mand("Running Back"), ""),
-      textInput("myRosterRB2", star_mand("Running Back"), ""),
+      textInput("myRosterRB2", "Running Back", ""),
       textInput("myRosterWR1", star_mand("Wide Receiver"), ""),
-      textInput("myRosterWR2", star_mand("Wide Receiver"), ""),
+      textInput("myRosterWR2", "Wide Receiver", ""),
       textInput("myRosterTE", star_mand("Tight End"), ""),
       textInput("myRosterFlex", "Flex", ""),
       textInput("myRosterDST", "Defense/Special Team", ""),
       textInput("myRosterK", star_mand("Kicker"), ""),
       actionButton("submit", star_mand("Submit"), class = "btn-primary")
+    ),
+    shinyjs::hidden(
+      div(
+        id = "roster_submit_mssg",
+        h3("Roster Saved."),
+        actionLink("resubmit_", "Resubmit Roster.")
+      )
     ),
     card_footer()
   ),
@@ -63,7 +70,10 @@ ui <- grid_page(
           tabPanel("About the App"),
           tabPanel("About the Creators")
         ),
-        nav_panel(title = "Data")
+        nav_panel(
+          title = "Data"#,
+          #tableOutput(qb_pred_table)
+        )
       )
     )
   )
