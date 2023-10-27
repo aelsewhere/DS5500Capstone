@@ -71,8 +71,18 @@ ui <- grid_page(
           tabPanel("About the Creators")
         ),
         nav_panel(
-          title = "Data"#,
-          #tableOutput(qb_pred_table)
+          title = "Data",
+          h3("Quarterback Predictions"),
+          tableOutput("qb_pred_table"),
+          br(),
+          h3("Wide Reciever Predictions"),
+          tableOutput("wr_pred_table"),
+          br(),
+          h3("Tight End Predictions"),
+          tableOutput("te_pred_table"),
+          br(),
+          h3("Running Back Predictions"),
+          tableOutput("rb_pred_table")
         )
       )
     )
