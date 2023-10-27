@@ -1,0 +1,397 @@
+---
+title: "Position Modeling"
+author: "Claire Dudley"
+date: "2023-10-27"
+output: html_document
+---
+
+```{r}
+# libraries
+library(tidyverse)
+library(tidymodels)
+library(nflfastR)
+library(nflreadr)
+library(zoo)
+library(randomForest)
+library(glmnet)
+library(lme4)
+library(lmerTest)
+library(caret)
+```
+
+data
+```{r}
+pbp_2020 <- nflreadr::load_pbp(2020)
+
+qbs <- 
+  load_player_stats(2020) %>%
+  filter(position == 'QB')
+
+wrs <- 
+  load_player_stats(2020) %>%
+  filter(position == 'WR')
+
+rbs <-
+  load_player_stats(2020) %>%
+  filter(position == 'RB')
+
+tes <-
+  load_player_stats(2020) %>%
+  filter(position == 'TE')
+
+```
+
+# Calculating 5 day rolling averages
+```{r}
+qbs <-
+  qbs %>%
+  group_by(player_id) %>%
+  mutate(avg_fantasy_pts = lag(rollapplyr(fantasy_points, 5, mean, partial = TRUE)),
+         avg_passing_yards = lag(rollapplyr(passing_yards, 5, mean, partial = TRUE)),
+         avg_passing_tds = lag(rollapplyr(passing_tds, 5, mean, partial = TRUE)),
+         avg_rushing_yards = lag(rollapplyr(rushing_yards, 5, mean, partial = TRUE)),
+         avg_rushing_tds = lag(rollapplyr(rushing_tds, 5, mean, partial = TRUE)),
+          last_rush_yards = lag(rushing_yards),
+        last_passing_yards = lag(passing_yards),
+        avg_passing_epa = lag(rollapplyr(passing_epa, 5, mean, partial = TRUE)),
+        avg_pacr = lag(rollapplyr(pacr, 5, mean, partial = TRUE)),
+        avg_dakota = lag(rollapplyr(dakota, 5, mean, partial = TRUE)))
+
+qb_rolling <-
+  qbs %>%
+  filter(!is.na(avg_fantasy_pts),
+         season_type == "REG") %>%
+  mutate(week = as.factor(week)) %>%
+  dplyr::select(player_name, week, fantasy_points, avg_fantasy_pts, avg_passing_yards,
+                avg_passing_tds, avg_rushing_yards, avg_rushing_tds, last_rush_yards,
+                last_passing_yards, avg_passing_epa, avg_pacr, avg_dakota) %>%
+  ungroup()
+
+pbp_2020_join <-
+  pbp_2020 %>%
+  dplyr::select(home_team, away_team, week, posteam, posteam_type, defteam, roof, surface, spread_line, temp, wind)
+pbp_2020_join$recent_team <- pbp_2020_join$posteam
+pbp_2020_join <-
+  pbp_2020_join %>%
+  filter(!is.na(recent_team)) %>%
+  distinct()
+
+qb_extra <-
+  inner_join(pbp_2020_join, qbs, by = c("week", "recent_team"))
+
+# fixing spread variable
+qb_extra <-
+  qb_extra %>%
+  mutate(spread = ifelse(posteam_type == 'home', -1 * spread_line, 1* spread_line),
+         week = as.factor(week)) 
+
+qb_extra <-
+  qb_extra %>%
+  group_by(player_name) %>%
+  mutate(row_count = n())
+
+qb_extra <-
+  qb_extra %>%
+  filter(completions > 2)
+
+qb_model <- 
+  qb_extra %>%
+  dplyr::select(week, posteam, defteam, spread, player_name, avg_rushing_yards, avg_passing_yards, avg_fantasy_pts, fantasy_points) %>%
+  filter(!is.na(avg_fantasy_pts),
+         !is.na(fantasy_points))
+
+qb_model <- na.omit(qb_model)
+```
+
+
+
+# Modeling Using Tidymodels
+
+```{r}
+set.seed(10)
+data_split <- initial_split(qb_model, strata = "fantasy_points", prop = 3/4)
+
+qb_train <- na.omit(training(data_split))
+qb_test <- na.omit(testing(data_split))
+
+```
+
+# Linear
+```{r}
+lm_mod <- lm(fantasy_points ~ avg_rushing_yards + avg_passing_yards + avg_fantasy_pts +
+               posteam + defteam + spread + player_name, data = qb_extra)
+summary(lm_mod)
+
+predictions <- predict(lm_mod, newdata = qb_test)
+mse <- mean((predictions - qb_test$fantasy_points) ^ 2)
+rmse <- sqrt(mse)
+rmse
+plot(residuals(lm_mod) ~ fitted(lm_mod), data = qb_test)
+```
+
+# Mixed Effects
+```{r}
+qb_lmer <- lmer(fantasy_points ~ avg_passing_yards + avg_rushing_yards + (1|player_name) +
+                  (1|defteam),
+                data = qb_extra)
+summary(qb_lmer)
+
+predictions <- predict(qb_lmer, newdata = qb_test)
+```
+
+```{r}
+qb_test$pred <-predictions
+
+qb_extra$pred <-predict(qb_lmer)
+
+qb_test <-
+  qb_test %>%
+  group_by(player_name) %>%
+  mutate(row_count = n())
+
+qb_top <-
+  qb_extra %>%
+  filter(row_count > 10)
+
+
+
+ggplot(data = qb_top, aes(x = week, y = fantasy_points, group = player_name)) + geom_line() + 
+  geom_point(x = qb_top$week, y = qb_top$pred, group = qb_top$player_name) +
+  facet_wrap(~player_name, ncol = 9)
+```
+
+WRs
+```{r}
+wrs <-
+  wrs %>%
+  group_by(player_id) %>%
+  mutate(avg_fantasy_pts = lag(rollapplyr(fantasy_points, 5, mean, partial = TRUE)),
+         avg_receiving_yards = lag(rollapplyr(passing_yards, 5, mean, partial = TRUE)),
+         avg_receiving_tds = lag(rollapplyr(passing_tds, 5, mean, partial = TRUE)),
+         avg_rushing_yards = lag(rollapplyr(rushing_yards, 5, mean, partial = TRUE)),
+         avg_rushing_tds = lag(rollapplyr(rushing_tds, 5, mean, partial = TRUE)),
+          last_rush_yards = lag(rushing_yards),
+        last_receiving_yards = lag(receiving_yards))
+
+wr_rolling <-
+  wrs %>%
+  filter(!is.na(avg_fantasy_pts),
+         season_type == "REG") %>%
+  mutate(week = as.factor(week)) %>%
+  dplyr::select(player_name, week, fantasy_points, avg_fantasy_pts, avg_receiving_yards,
+                avg_receiving_tds, avg_rushing_yards, avg_rushing_tds, last_rush_yards,
+                last_receiving_yards) %>%
+  ungroup()
+
+pbp_2020_join <-
+  pbp_2020 %>%
+  dplyr::select(home_team, away_team, week, posteam, posteam_type, defteam, roof, surface, spread_line, temp, wind)
+pbp_2020_join$recent_team <- pbp_2020_join$posteam
+pbp_2020_join <-
+  pbp_2020_join %>%
+  filter(!is.na(recent_team)) %>%
+  distinct()
+
+wr_extra <-
+  inner_join(pbp_2020_join, wrs, by = c("week", "recent_team"))
+
+# fixing spread variable
+wr_extra <-
+  wr_extra %>%
+  mutate(spread = ifelse(posteam_type == 'home', -1 * spread_line, 1* spread_line),
+         week = as.factor(week)) 
+wr_extra <-
+  wr_extra %>%
+  group_by(player_name) %>%
+  mutate(row_count = n())
+
+
+
+wr_model <- 
+  wr_extra %>%
+  dplyr::select(week, posteam, defteam, spread, player_name, avg_rushing_yards, avg_receiving_yards, avg_fantasy_pts, fantasy_points) %>%
+  filter(!is.na(avg_fantasy_pts),
+         !is.na(fantasy_points))
+```
+
+# Linear
+```{r}
+lm_mod <- lm(fantasy_points ~ avg_rushing_yards + avg_receiving_yards + avg_fantasy_pts +
+               posteam + defteam + spread + player_name, data = wr_extra)
+summary(lm_mod)
+
+predictions <- predict(lm_mod, newdata = wr_test)
+mse <- mean((predictions - qb_test$fantasy_points) ^ 2)
+rmse <- sqrt(mse)
+rmse
+plot(residuals(lm_mod) ~ fitted(lm_mod), data = qb_test)
+```
+
+# Mixed Effects
+```{r}
+wr_lmer <- lmer(fantasy_points ~ avg_receiving_yards + avg_rushing_yards + (1|player_name) +
+                  (1|defteam),
+                data = wr_extra)
+summary(wr_lmer)
+wr_extra <-
+  wr_extra %>%
+  filter(!is.na(avg_fantasy_pts))
+wr_extra$pred <-predict(wr_lmer)
+
+wr_top <-
+  wr_extra %>%
+  filter(row_count > 10)
+
+ggplot(data = wr_top, aes(x = week, y = fantasy_points, group = player_name)) + geom_line() + 
+  geom_point(x = wr_top$week, y = wr_top$pred, group = wr_top$player_name) +
+  facet_wrap(~player_name, ncol = 9)
+```
+
+# RBs
+```{r}
+rbs <-
+  rbs %>%
+  group_by(player_id) %>%
+  mutate(avg_fantasy_pts = lag(rollapplyr(fantasy_points, 5, mean, partial = TRUE)),
+         avg_receiving_yards = lag(rollapplyr(passing_yards, 5, mean, partial = TRUE)),
+         avg_receiving_tds = lag(rollapplyr(passing_tds, 5, mean, partial = TRUE)),
+         avg_rushing_yards = lag(rollapplyr(rushing_yards, 5, mean, partial = TRUE)),
+         avg_rushing_tds = lag(rollapplyr(rushing_tds, 5, mean, partial = TRUE)),
+          last_rush_yards = lag(rushing_yards),
+        last_receiving_yards = lag(receiving_yards))
+
+rb_rolling <-
+  rbs %>%
+  filter(!is.na(avg_fantasy_pts),
+         season_type == "REG") %>%
+  mutate(week = as.factor(week)) %>%
+  dplyr::select(player_name, week, fantasy_points, avg_fantasy_pts, avg_receiving_yards,
+                avg_receiving_tds, avg_rushing_yards, avg_rushing_tds, last_rush_yards,
+                last_receiving_yards) %>%
+  ungroup()
+
+pbp_2020_join <-
+  pbp_2020 %>%
+  dplyr::select(home_team, away_team, week, posteam, posteam_type, defteam, roof, surface, spread_line, temp, wind)
+pbp_2020_join$recent_team <- pbp_2020_join$posteam
+pbp_2020_join <-
+  pbp_2020_join %>%
+  filter(!is.na(recent_team)) %>%
+  distinct()
+
+rb_extra <-
+  inner_join(pbp_2020_join, rbs, by = c("week", "recent_team"))
+
+# fixing spread variable
+rb_extra <-
+  rb_extra %>%
+  mutate(spread = ifelse(posteam_type == 'home', -1 * spread_line, 1* spread_line),
+         week = as.factor(week)) 
+rb_extra <-
+  rb_extra %>%
+  group_by(player_name) %>%
+  mutate(row_count = n())
+
+
+
+rb_model <- 
+  rb_extra %>%
+  dplyr::select(week, posteam, defteam, spread, player_name, avg_rushing_yards, avg_receiving_yards, avg_fantasy_pts, fantasy_points) %>%
+  filter(!is.na(avg_fantasy_pts),
+         !is.na(fantasy_points))
+```
+
+# Mixed Effects
+```{r}
+rb_lmer <- lmer(fantasy_points ~ avg_receiving_yards + avg_rushing_yards + (1|player_name) +
+                  (1|defteam),
+                data = rb_extra)
+summary(rb_lmer)
+rb_extra <-
+  rb_extra %>%
+  filter(!is.na(avg_fantasy_pts))
+rb_extra$pred <-predict(rb_lmer)
+
+rb_top <-
+  rb_extra %>%
+  filter(row_count > 10)
+
+ggplot(data = rb_top, aes(x = week, y = fantasy_points, group = player_name)) + geom_line() + 
+  geom_point(x = rb_top$week, y = rb_top$pred, group = rb_top$player_name) +
+  facet_wrap(~player_name, ncol = 9)
+```
+
+# TEs
+```{r}
+tes <-
+  tes %>%
+  group_by(player_id) %>%
+  mutate(avg_fantasy_pts = lag(rollapplyr(fantasy_points, 5, mean, partial = TRUE)),
+         avg_receiving_yards = lag(rollapplyr(passing_yards, 5, mean, partial = TRUE)),
+         avg_receiving_tds = lag(rollapplyr(passing_tds, 5, mean, partial = TRUE)),
+         avg_rushing_yards = lag(rollapplyr(rushing_yards, 5, mean, partial = TRUE)),
+         avg_rushing_tds = lag(rollapplyr(rushing_tds, 5, mean, partial = TRUE)),
+          last_rush_yards = lag(rushing_yards),
+        last_receiving_yards = lag(receiving_yards))
+
+te_rolling <-
+  tes %>%
+  filter(!is.na(avg_fantasy_pts),
+         season_type == "REG") %>%
+  mutate(week = as.factor(week)) %>%
+  dplyr::select(player_name, week, fantasy_points, avg_fantasy_pts, avg_receiving_yards,
+                avg_receiving_tds, avg_rushing_yards, avg_rushing_tds, last_rush_yards,
+                last_receiving_yards) %>%
+  ungroup()
+
+pbp_2020_join <-
+  pbp_2020 %>%
+  dplyr::select(home_team, away_team, week, posteam, posteam_type, defteam, roof, surface, spread_line, temp, wind)
+pbp_2020_join$recent_team <- pbp_2020_join$posteam
+pbp_2020_join <-
+  pbp_2020_join %>%
+  filter(!is.na(recent_team)) %>%
+  distinct()
+
+te_extra <-
+  inner_join(pbp_2020_join, tes, by = c("week", "recent_team"))
+
+# fixing spread variable
+te_extra <-
+  te_extra %>%
+  mutate(spread = ifelse(posteam_type == 'home', -1 * spread_line, 1* spread_line),
+         week = as.factor(week)) 
+te_extra <-
+  te_extra %>%
+  group_by(player_name) %>%
+  mutate(row_count = n())
+
+
+
+te_model <- 
+  te_extra %>%
+  dplyr::select(week, posteam, defteam, spread, player_name, avg_rushing_yards, avg_receiving_yards, avg_fantasy_pts, fantasy_points) %>%
+  filter(!is.na(avg_fantasy_pts),
+         !is.na(fantasy_points))
+```
+
+# Mixed Effects
+```{r}
+te_lmer <- lmer(fantasy_points ~ avg_receiving_yards + avg_rushing_yards + (1|player_name) +
+                  (1|defteam),
+                data = te_extra)
+summary(te_lmer)
+te_extra <-
+  te_extra %>%
+  filter(!is.na(avg_fantasy_pts))
+te_extra$pred <-predict(te_lmer)
+
+te_top <-
+  te_extra %>%
+  filter(row_count > 10)
+
+ggplot(data = te_top, aes(x = week, y = fantasy_points, group = player_name)) + geom_line() + 
+  geom_point(x = te_top$week, y = te_top$pred, group = te_top$player_name) +
+  facet_wrap(~player_name, ncol = 9)
+```
+
