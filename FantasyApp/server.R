@@ -40,11 +40,6 @@ server <- function(input, output, session) {
 
   output$input_a <- renderPrint({input$select})
 
-
-#  output$qb_pred_table <- renderTable({
-#    conn <- 
-#  })
-
   # Save Roster
   formData <- reactive({
     data <- sapply(mand_roster, function(x) input[[x]])
@@ -93,5 +88,17 @@ server <- function(input, output, session) {
     roster_k <<- input$myRosterK
   })
 
-
+  output$qb_pred_table <- renderTable({
+    read.csv("Data/qb_pred.csv")
+  })
+  output$wr_pred_table <- renderTable({
+    read.csv("Data/wr_pred.csv")
+  })
+  output$te_pred_table <- renderTable({
+    read.csv("Data/te_pred.csv")
+  })
+  output$rb_pred_table <- renderTable({
+    read.csv("Data/rb_pred.csv")
+  })
+  
 }
