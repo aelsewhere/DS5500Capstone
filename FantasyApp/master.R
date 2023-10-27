@@ -6,9 +6,8 @@ library(shinyMobile)
 # Load helper files -----------------------------
 source("helper.R")
 
-# Create Master Variables ----------------------
-
 # Load Data -------------------------------------
+source("Weekly_Stat_Predictor.R")
 
 # Load UI ----------------------------------------
 source("ui.R")
