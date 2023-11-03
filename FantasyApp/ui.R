@@ -31,16 +31,97 @@ ui <- grid_page(
     h3("My Roster"),
     div(
       id = "form",
-      textInput("myRosterQB", star_mand("Quarterback"), ""),
-      textInput("myRosterRB1", star_mand("Running Back"), ""),
-      textInput("myRosterRB2", "Running Back", ""),
-      textInput("myRosterWR1", star_mand("Wide Receiver"), ""),
-      textInput("myRosterWR2", "Wide Receiver", ""),
-      textInput("myRosterTE", star_mand("Tight End"), ""),
-      textInput("myRosterFlex", "Flex", ""),
-      textInput("myRosterDST", "Defense/Special Team", ""),
-      textInput("myRosterK", star_mand("Kicker"), ""),
-      actionButton("submit", star_mand("Submit"), class = "btn-primary")
+      selectInput(
+        "myRosterQB",
+        star_mand("Quarterback"),
+        qb_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterRB1",
+        star_mand("Running Back"),
+        rb_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterRB2",
+        "Running Back",
+        rb_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterWR1",
+        star_mand("Wide Receiver"),
+        wr_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterWR2",
+        "Wide Receiver",
+        wr_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterTE",
+        star_mand("Tight End"),
+        te_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterFlex",
+        "Flex",
+        flex_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterDST",
+        "Defense/Special Team",
+        dst_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      selectInput(
+        "myRosterK",
+        star_mand("Kicker"),
+        k_choices,
+        selected = NULL,
+        multiple = FALSE,
+        selectize = TRUE,
+        width = NULL,
+        size = NULL
+      ),
+      actionButton("submit", star_mand("Submit"), class = "btn-primary"),
     ),
     shinyjs::hidden(
       div(
@@ -61,15 +142,8 @@ ui <- grid_page(
     area = "area3",
     card_body(
       tabsetPanel(
+        nav_panel(title = "Home"),
         nav_panel(title = "Upcoming Games"),
-        nav_panel(title = "Predictions"),
-        nav_panel(title = "Player Statistics"),
-        navbarMenu(
-          title = "Learn",
-          tabPanel("About the Game"),
-          tabPanel("About the App"),
-          tabPanel("About the Creators")
-        ),
         nav_panel(
           title = "Data",
           h3("Quarterback Predictions"),
@@ -83,6 +157,13 @@ ui <- grid_page(
           br(),
           h3("Running Back Predictions"),
           dataTableOutput("rb_pred_table")
+        ),
+        nav_panel(title = "Predictions"),
+        navbarMenu(
+          title = "Learn",
+          tabPanel("About the Game"),
+          tabPanel("About the App"),
+          tabPanel("About the Creators")
         )
       )
     )
