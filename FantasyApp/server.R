@@ -1,13 +1,9 @@
 # libraries
-library(shiny)
-library(ggplot2)
-library(shinyjs)
-library(DBI)
-library(dplyr)
-library(dbplyr)
-library(pool)
-
-
+libs <- c(
+  "shiny", "shinyMobile", "ggplot2", "shinyjs", "DBI",
+  "dplyr", "dbplyr", "pool"
+)
+invisible(lapply(libs, library, character.only = TRUE))
 
 server <- function(input, output, session) {
   dir.create(saved_roster, showWarnings = FALSE, recursive = TRUE)
@@ -15,7 +11,7 @@ server <- function(input, output, session) {
   observe({
     roster_filled <-
       vapply(
-        mand_roster,
+        full_roster,
         function(field) {
           !is.null(input[[field]]) && input[[field]] != ""
         },
@@ -25,42 +21,62 @@ server <- function(input, output, session) {
     toggleState(id = "submit", condition = roster_filled)
   })
 
-  output$input_a <- renderPrint({input$select})
-
   # Save Roster
-  formData <- reactive({
-    data <- sapply(mand_roster, function(x) input[[x]])
-    data <- c(data, timestamp = epochTime())
+  form_data <- reactive({
+    data <- sapply(full_roster, function(x) input[[x]])
+    data <- c(data, timestamp = epoch_time())
     data <- t(data)
     data
   })
 
-  saveData <- function(data){
-    fileName <- sprintf("%s_%s.csv", humanTime(), digest::digest(data))
+  file_path <- reactiveVal(NULL)
+
+  save_data <- function(data) {
+    file_name <- sprintf("%s_%s.csv", human_time(), digest::digest(data))
+    new_file_path <- file.path(saved_roster, file_name)
+
+    file_path(new_file_path)
+
     write.csv(
-     x=data,
-     file=file.path(saved_roster, fileName),
-     row.names=FALSE,
-     quote=TRUE)
+      x = data,
+      file = new_file_path,
+      row.names = FALSE,
+      quote = TRUE
+    )
   }
 
-  observeEvent(input$submit,{saveData(formData())})
+  roster_data <- reactive({
+    if(!is.null(file_path()) && file.exists(file_path())){
+      roster <- read.csv(file_path())
+      formatted_data <- paste(
+        "Quarterback: ", roster$myRosterQB,
+        "<br> Running Back: ", roster$myRosterRB1,
+        "<br> Running Back: ", roster$myRosterRB2,
+        "<br> Wide Reciever: ", roster$myRosterWR1,
+        "<br> Wide Reciever: ", roster$myRosterWR2,
+        "<br> Tight End: ", roster$myRosterTE,
+        "<br> Flex: ", roster$myRosterFlex,
+        "<br> Defense/Special Team: ", roster$myRosterDST,
+        "<br> Kicker: ", roster$myRosterK
+      )
+      formatted_data
+    }
+  })
+
+
+  observeEvent(input$submit,{save_data(form_data())})
 
   observeEvent(input$submit,{
-    shinyjs::reset("form")
-    shinyjs::hide("form")
+    shinyjs::reset("roster_form")
+    shinyjs::hide("roster_form")
     shinyjs::show("roster_submit_msg")
-
   })
 
   observeEvent(input$resubmit_, {
-    shinyjs::show("form")
-    shinyjs::hide("roster_submit_mssg")
+    shinyjs::show("roster_form")
+    shinyjs::hide("roster_submit_msg")
   })
 
-  observe({
-    print(input$myRosterQB)
-  })
 
   observe({
     roster_qb <- input$myRosterQB
@@ -72,51 +88,11 @@ server <- function(input, output, session) {
     roster_flex <- input$myRosterFlex
     roster_dst <- input$myRosterDST
     roster_k <- input$myRosterK
+
   })
 
-  output$qb_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterQB)
-    print_player_info(player_info)
-  })
-
-  output$rb1_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterRB1)
-    print_player_info(player_info)
-  })
-
-  output$rb2_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterRB2)
-    print_player_info(player_info)
-  })
-
-  output$wr1_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterWR1)
-    print_player_info(player_info)
-  })
-
-  output$wr2_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterWR2)
-    print_player_info(player_info)
-  })
-
-  output$te_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterTE)
-    print_player_info(player_info)
-  })
-
-  output$flex_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterFlex)
-    print_player_info(player_info)
-  })
-
-  output$dst_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterDST)
-    print_player_info(player_info)
-  })
-
-  output$k_info <- renderPrint({
-    player_info <- get_player_info(input$myRosterK)
-    print_player_info(player_info)
+  output$saved_roster_info <- renderUI({
+    HTML(paste("Saved Roster Info:<br>", roster_data()))
   })
 
 
@@ -160,4 +136,7 @@ server <- function(input, output, session) {
       )
     )
   })
+  #output$upcoming_schedule <- DT::renderDataTable({
+  #  DT::datatable("schedule")
+  #})
 }
