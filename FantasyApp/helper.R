@@ -29,42 +29,35 @@ full_roster <- c(
   "myRosterK"
 )
 
-schedule <- nflreadr::load_schedules()
 
-epochTime <- function() {
-    as.integer(Sys.time())
+epoch_time <- function() {
+  as.integer(Sys.time())
 }
-humanTime <- function() format(Sys.time(), "%Y%m%d-%H%M%OS")
+human_time <- function() format(Sys.time(), "%Y%m%d-%H%M%OS")
 
 saved_roster <- "responses"
 
 nfl_roster <- nflreadr::load_rosters()
 
-qb_choices <- nfl_roster[["full_name"]]
+qb_choices <- nfl_roster[nfl_roster$position == 'QB', full_name]
 
-rb_choices <- nfl_roster[["full_name"]]
+rb_choices <- nfl_roster[nfl_roster$position == 'RB', full_name]
 
-wr_choices <- nfl_roster[["full_name"]]
+wr_choices <- nfl_roster[nfl_roster$position == 'WR', full_name]
 
-te_choices <- nfl_roster[["full_name"]]
+te_choices <- nfl_roster[nfl_roster$position == 'TE', full_name]
 
 flex_choices <- nfl_roster[["full_name"]]
 
-dst_choices <- nfl_roster[["full_name"]]
+dst_choices <- nfl_roster[nfl_roster$position %in% c(
+  "LS", "DL", "P", "DB", "LB"
+), full_name]
 
-k_choices <- nfl_roster[["full_name"]]
+k_choices <- nfl_roster[nfl_roster$position == 'K', full_name]
 
-get_player_info <- function(player_name){
-  player_info <- nfl_roster %>%
-    filter(full_name == player_name)
-  if(nrow(player_info) == 0){
-    return("Player Not Found")
-  } else{
-    return(player_info)
-  }
-}
 
-print_player_info <- function(player_info){
-  cat("Name: ", player_info$full_name, "\n")
-  cat("Position: ", "\n")
-}
+
+
+##################################################
+
+schedule <- nflfastR::fast_scraper_schedules(2022:2023)
