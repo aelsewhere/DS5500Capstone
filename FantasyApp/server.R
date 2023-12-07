@@ -7,7 +7,13 @@ invisible(lapply(libs, library, character.only = TRUE))
 
 server <- function(input, output, session) {
   dir.create(saved_roster, showWarnings = FALSE, recursive = TRUE)
-  # ----------------------------------------------
+
+  # PREDICTION FLES
+  qb_pred <- read.csv("Data/qb_pred.csv")
+  rb_pred <- read.csv("Data/rb_pred.csv")
+  wr_pred <- read.csv("Data/wr_pred.csv")
+  te_pred <- read.csv("Data/te_pred.csv")
+
   observe({
     roster_filled <-
       vapply(
@@ -63,7 +69,6 @@ server <- function(input, output, session) {
     }
   })
 
-
   observeEvent(input$submit,{save_data(form_data())})
 
   observeEvent(input$submit,{
@@ -77,66 +82,73 @@ server <- function(input, output, session) {
     shinyjs::hide("roster_submit_msg")
   })
 
-
-  observe({
-    roster_qb <- input$myRosterQB
-    roster_rb1 <- input$myRosterRB1
-    roster_rb2 <- input$myRosterRB2
-    roster_wr1 <- input$myRosterWR1
-    roster_wr2 <- input$myRosterWR2
-    roster_te <- input$myRosterTE
-    roster_flex <- input$myRosterFlex
-    roster_dst <- input$myRosterDST
-    roster_k <- input$myRosterK
-
-  })
-
   output$saved_roster_info <- renderUI({
     HTML(paste("Saved Roster Info:<br>", roster_data()))
   })
 
+  player_mapping <- build_player_mapping()
 
-  output$qb_pred_table <- DT::renderDataTable({
-    DT::datatable(
-      read.csv(
-        "Data/qb_pred.csv"
-      ),
-      options = list(
-        scrollX = TRUE
-      )
-    )
+
+  ###### MY ROSTER DISPLAY - QUARTERBACK
+  rv <- reactiveValues(selected_qb = NULL)
+
+  qb_pred_filtered <- reactive({
+    req(input$myRosterQB)
+    print("IN QB PRED FILTERED")
+    qb_name_mapping <- player_mapping[player_mapping$Full_name == input$myRosterQB, ]
+    if (nrow(qb_name_mapping) == 0) {
+      return(NULL)
+    }
+    qb_short_name <- qb_name_mapping$Short_name
+    rv$selected_qb <- qb_name_mapping$Full_name
+    qb_pred[qb_pred$player_name == qb_short_name, ]
   })
-  output$wr_pred_table <- DT::renderDataTable({
-    DT::datatable(
-      read.csv(
-        "Data/wr_pred.csv"
-      ),
-      options = list(
-        scrollX = TRUE
-      )
-    )
+
+  observe({
+    req(qb_pred_filtered())
+    print("IN OBSERVE")
+    print(qb_pred_filtered())
   })
-  output$te_pred_table <- DT::renderDataTable({
-    DT::datatable(
-      read.csv(
-        "Data/te_pred.csv"
-      ),
-      options = list(
-        scrollX = TRUE
-      )
+
+  observe({
+    selected_qb_value <- rv$selected_qb
+    print(paste("Before Update: ", selected_qb_value))
+    updateSelectizeInput(
+      session,
+      "myRosterQB",
+      choices = qb_choices,
+      selected = selected_qb_value
     )
+    print(paste("After Update: ", selected_qb_value))
   })
-  output$rb_pred_table <- DT::renderDataTable({
-    DT::datatable(
-      read.csv(
-        "Data/rb_pred.csv"
-      ),
-      options = list(
-        scrollX = TRUE
+
+  qb_data_as_text <- reactive({
+    req(qb_pred_filtered())
+    print("IN QB DATA AS TEXT")
+    if (nrow(qb_pred_filtered()) == 0) {
+      return("No player data available.")
+    }
+    output_text <- HTML(paste("Quarterback: ", rv$selected_qb))
+    return(output_text)
+  })
+
+  output$qb_table <- renderTable({
+    req(qb_pred_filtered())
+    print("IN RENDER TABLE")
+    table_data <- qb_pred_filtered() %>%
+      select(
+        pred_passing_yards,
+        pred_passing_tds,
+        pred_rushing_yards,
+        pred_fantasy_points
       )
-    )
+    table_data <- as.data.frame(table_data)
+    return(table_data)
   })
-  #output$upcoming_schedule <- DT::renderDataTable({
-  #  DT::datatable("schedule")
-  #})
+
+  output$qb_info <- renderUI({
+    print("IN RENDER UI")
+    qb_data_as_text()
+  })
+
 }
