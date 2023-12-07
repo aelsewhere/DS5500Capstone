@@ -125,33 +125,27 @@ ui <- fluidPage(
         area = "area3",
         card_body(
           tabsetPanel(
-            nav_panel(title = "Home"),
+            nav_panel(
+              title = "Home",
+              h3("My Team"),
+              uiOutput("qb_info"),
+              tableOutput("qb_table")
+            ),
             nav_panel(
               title = "Upcoming Games",
               h3("Upcoming Games"),
               dataTableOutput("schedule")
             ),
             nav_panel(
-              title = "Data",
-              h3("Quarterback Predictions"),
-              dataTableOutput("qb_pred_table"),
-              br(),
-              h3("Wide Reciever Predictions"),
-              dataTableOutput("wr_pred_table"),
-              br(),
-              h3("Tight End Predictions"),
-              dataTableOutput("te_pred_table"),
-              br(),
-              h3("Running Back Predictions"),
-              dataTableOutput("rb_pred_table")
+              title = "Predictions"
             ),
-            nav_panel(title = "Predictions"),
             navbarMenu(
               title = "Learn",
               tabPanel("About the Game"),
               tabPanel("About the App"),
               tabPanel("About the Creators")
             )
+
           )
         )
       )
