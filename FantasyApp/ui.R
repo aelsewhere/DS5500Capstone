@@ -7,6 +7,23 @@ invisible(lapply(libs, library, character.only = TRUE))
 ui <- fluidPage(
   shinyjs::useShinyjs(),
   shinyjs::inlineCSS(appCSS),
+  tags$head(
+    tags$script(
+      HTML('
+        Shiny.addCustomMessageHandler("updateSelectize",
+          function(message) {
+            $("#" + message.inputId).selectize()[0].selectize.clear();
+            $("#" + message.inputId).selectize()[0].selectize.addOption(
+              $.map(message.choices, function(value) {
+                return { value: value, text: value };
+              })
+            );
+            $("#" + message.inputId).selectize()[0].selectize.addItem(message.selected);
+          }
+        );
+      ')
+    )
+  ),
   sidebarLayout(
     sidebarPanel(
       h3("My Roster"),
@@ -155,18 +172,5 @@ ui <- fluidPage(
         )
       )
     )
-  ),
-  shinyjs::extendShinyjs( text = '
-    Shiny.addCustomMessageHandler("updateSelectize"),
-      function(message) {
-        $("#" + message.inputId).selectize()[0].selectize.clear();
-        $("#" + message.inputId).selectize()[0].selectize.addOption(
-          $.map(message.choice, function(value){
-            return {value: value, text: value };
-          })
-        );
-        $("#" + message.inputId).selectize()[0].selectize.addItem(message.selected);
-      }
-    );
-  ')
+  )
 )
