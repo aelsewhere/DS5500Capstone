@@ -6,11 +6,6 @@ library(shiny)
 # Load helper files -----------------------------
 source("helper.R")
 
-# Load Data -------------------------------------
-source("Weekly_Stat_Predictor.R")
-source("position_modeling.R")
-source("nfl_eda.R")
-
 # Load UI ----------------------------------------
 source("ui.R")
 
