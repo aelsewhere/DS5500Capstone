@@ -103,7 +103,12 @@ ui <- fluidPage(
           width = NULL,
           size = NULL
         ),
-        actionButton("submit", star_mand("Submit"), class = "btn-primary")
+        actionButton(
+          "submit",
+          star_mand("Submit"),
+          class = "btn-primary",
+          id = submit
+        )
       ),
       shinyjs::hidden(
         div(
@@ -150,5 +155,18 @@ ui <- fluidPage(
         )
       )
     )
-  )
+  ),
+  shinyjs::extendShinyjs( text = '
+    Shiny.addCustomMessageHandler("updateSelectize"),
+      function(message) {
+        $("#" + message.inputId).selectize()[0].selectize.clear();
+        $("#" + message.inputId).selectize()[0].selectize.addOption(
+          $.map(message.choice, function(value){
+            return {value: value, text: value };
+          })
+        );
+        $("#" + message.inputId).selectize()[0].selectize.addItem(message.selected);
+      }
+    );
+  ')
 )
