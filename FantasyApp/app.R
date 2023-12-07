@@ -1,0 +1,2 @@
+source("master.R")
+runApp()
