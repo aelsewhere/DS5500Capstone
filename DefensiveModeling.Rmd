@@ -1,0 +1,613 @@
+---
+title: "Defensive Modeling"
+author: "Claire Dudley"
+date: "2023-12-01"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(nflfastR)
+library(nflreadr)
+library(dplyr)
+library(tictoc)
+library(zoo)
+library(lme4)
+library(lmerTest)
+```
+
+```{r}
+pbp_2020 <- nflreadr::load_pbp(2020)
+all <-
+  load_player_stats(2020)
+```
+
+```{r}
+all2 <- nflfastR::load_pbp(2020) %>%
+  dplyr::filter(season_type == "REG") %>%
+  nflfastR::calculate_player_stats_def(weekly = TRUE)
+```
+
+# Defensive Players
+
+```{r}
+all3 <- left_join(all2, all, by = c('season','player_id', 'player_name', 'player_display_name', 'position', 'position_group', 'week'))
+```
+
+
+
+```{r}
+defense_group <-
+  all3 %>%
+  filter(position_group == 'DB' | position_group == 'LB')
+
+defense_group <-
+  defense_group %>%
+  select(-c('headshot_url.x', 'headshot_url.y'))
+  
+
+defense_group <- 
+  defense_group %>%
+  mutate_if(is.numeric, list(~replace_na(., 0)))
+```
+
+  So I currently have the fantasy points that individual dbacks and linebackers earned for their respective teams.
+  I am going to have to sum rows by team (?), to predict team's earned fantasy points by actions such as sacks.
+  
+Equation for Defensive Team Fantasy Points:
+
+  1 * sack + 2 * blocked kick + 2 * INT + 2 * Fumble Recovered + 2 * Safety + (-5 to 5) * Points Allowed + (-7 to 5) * Yards Allowed
+  
+Let's see what we've got: 
+* I don't have special teams right now and I am going to start by not dealing with that (Blocked Kicks)
+* Starting with just defensive calculations
+* I know touchdowns would be points but how many?
+* Points Allowed and Yards Allowed will have to be handled
+
+```{r}
+defense_group <-
+  defense_group %>%
+  mutate(defense_total = def_sacks + 2 * interceptions + 
+           2 * def_fumble_recovery_own + 2 * def_safety)
+
+defense_group$defense_total
+```
+
+
+# Making selective dataset
+```{r}
+def_select <-
+  defense_group %>%
+  dplyr::select('season', 'week',
+                'team', 'def_sacks', 'interceptions', 'def_fumble_recovery_own', 'def_safety', 'fantasy_points', 'defense_total')
+```
+
+# Adding specific players' touchdowns/points
+hopefully this is accurate but not many defensive players have anything for the fantasy_points variable
+```{r}
+def_select <-
+  def_select %>%
+  mutate(fantasy_total = fantasy_points + defense_total)
+```
+
+# Need to sum rows to get team values each week
+```{r}
+def_team_stats <- def_select %>%
+  group_by(season, week, team) %>%
+  summarise(across(everything(), sum),
+            .groups = 'drop') %>%
+  as.data.frame()
+```
+
+# OK now points against. 
+# Offensive team statistics will be how I do this
+
+```{r}
+offensive_team_stats <- 
+  nflfastR::load_pbp(2020) %>%
+  nflfastR::calculate_player_stats(weekly = TRUE) %>%
+  filter(!position_group %in% c('DB', 'LB'),
+         season_type == 'REG')
+```
+
+```{r}
+offense_sel <-
+  offensive_team_stats %>%
+  select('recent_team', 'season', 'week', 'passing_yards','passing_tds', 'rushing_yards', 'rushing_tds', 
+         'receiving_yards', 'receiving_tds')
+```
+
+
+# total points from touchdowns and total yards
+```{r}
+offense_sel <-
+  offense_sel %>%
+  mutate(td_points = rushing_tds * 7 + passing_tds * 7,
+         total_yards = rushing_yards + passing_yards)
+```
+
+# summing by team
+
+```{r}
+off_team_stats <- offense_sel %>%
+  group_by(season, week, recent_team) %>%
+  summarise(across(everything(), sum),
+            .groups = 'drop') %>%
+  as.data.frame()
+```
+
+
+# preparing to join
+
+```{r}
+off_team_stats <-
+  off_team_stats %>%
+  rename(posteam = recent_team)
+
+def_team_stats <-
+  def_team_stats %>%
+  rename(defteam = team)
+```
+
+pbp data
+```{r}
+pbp_2020_join <-
+  pbp_2020 %>%
+  dplyr::select(week, posteam, defteam)
+```
+
+```{r}
+off_team_total <-
+  left_join(off_team_stats, pbp_2020_join, by = c('posteam', 'week')) %>% distinct()
+```
+
+```{r}
+def_team_stats_nec <- 
+  def_team_stats %>%
+  dplyr::select('week', 'defteam', 'fantasy_total')
+```
+
+```{r}
+combo <-
+  left_join(off_team_total, def_team_stats_nec, by = c('week', 'defteam'))
+```
+
+# Kicking/field goal points
+
+```{r}
+kicking_stats <- 
+  nflfastR::load_pbp(2020) %>%
+  nflfastR::calculate_player_stats_kicking(weekly = TRUE) 
+```
+
+# Calculating points from field goals
+
+```{r}
+kicking_stats <- 
+  kicking_stats %>%
+  mutate(fg_points = fg_made * 3) %>%
+  dplyr::select('week', 'team', 'fg_points')
+
+kicking_stats <-
+  kicking_stats %>%
+  rename(posteam = team)
+
+kicking_stats[is.na(kicking_stats)] <- 0
+```
+
+# Joining kicking info
+
+```{r}
+final_set <- left_join(combo, kicking_stats, by = c('week', 'posteam'))
+```
+
+```{r}
+final_set <-
+  final_set %>%
+  mutate(off_points = fg_points + td_points)
+```
+
+# defensive points for how many points were given up
+
+```{r}
+final_set <-
+  final_set %>%
+  mutate(points_allowed = case_when(off_points < 1 ~ 10,
+                                    off_points > 0 & off_points < 7 ~ 7,
+                                    off_points > 6 & off_points < 14 ~ 4,
+                                    off_points > 13 & off_points < 21 ~ 1,
+                                    off_points > 20 & off_points < 28 ~ 0,
+                                    off_points > 27 & off_points < 35 ~ -1, 
+                                    off_points > 34 ~ -4))
+```
+
+```{r}
+final_set <-
+  final_set %>%
+  mutate(points = points_allowed + fantasy_total)
+```
+
+# 5 week rolling averages
+
+```{r}
+final_set <-
+  final_set %>%
+  arrange(defteam, week) %>%
+  group_by(defteam) %>%
+  mutate(avg_yards = lag(rollapplyr(total_yards, 5, mean, partial = TRUE)),
+         avg_tdpoints = lag(rollapplyr(td_points, 5, mean, partial = TRUE)),
+         avg_offpoints = lag(rollapplyr(off_points, 5, mean, partial = TRUE)),
+         avg_points = lag(rollapplyr(points, 5, mean, partial = TRUE))
+         )
+
+final_set <-
+  final_set %>%
+  filter(!is.na(avg_yards))
+```
+
+# OK Modeling now
+
+linear
+```{r}
+linear_mod <- lm(points ~ avg_yards + avg_points + avg_offpoints, data = final_set)
+summary(linear_mod)
+
+predictions <- predict(linear_mod, newdata = final_set, allow.new.levels = TRUE)
+mse <- mean((predictions - final_set$points) ^ 2, na.rm = TRUE)
+mse
+rmse <- sqrt(mse)
+rmse
+```
+
+mixed effects
+
+```{r}
+def_lmer <- lmer(points ~ avg_yards + avg_offpoints + (1|posteam),
+                data = final_set)
+
+summary(def_lmer)
+```
+
+testing
+```{r}
+predictions <- predict(def_lmer, newdata = final_set, allow.new.levels=TRUE)
+
+mse <- mean((predictions - final_set$points) ^ 2, na.rm = TRUE)
+mse
+rmse <- sqrt(mse)
+rmse
+```
+
+# Individual Defense
+
+```{r}
+defense_group <-
+  defense_group %>%
+  mutate(individual_fantasy = def_tackles_solo + 0.5 * def_tackle_assists + def_tackles_for_loss + def_qb_hits + 2 * def_sacks + 3 * interceptions + def_pass_defended + 3 * def_fumbles_forced + 6 * def_tds)
+```
+
+```{r}
+def_sel2 <-
+  defense_group %>%
+  dplyr::select('season', 'week',
+                'team', 'def_sacks', 'interceptions', 'def_fumbles_forced', 'def_tackles_solo', 'def_tackles_for_loss',
+                'def_qb_hits','individual_fantasy')
+
+def_sel2  <-
+  def_sel2 %>%
+  rename(defteam = team)
+```
+
+```{r}
+indiv_defense <-
+  left_join(def_sel2, off_team_total, by = c("defteam", "week"))
+```
+
+# 5 week rolling averages
+
+```{r}
+indiv_defense <-
+  indiv_defense %>%
+  arrange(defteam, week) %>%
+  group_by(defteam) %>%
+  mutate(avg_sacks = lag(rollapplyr(def_sacks, 5, mean, partial = TRUE)),
+         avg_ints = lag(rollapplyr(interceptions, 5, mean, partial = TRUE)),
+         avg_tackles = lag(rollapplyr(def_tackles_solo, 5, mean, partial = TRUE)),
+         avg_qbhits = lag(rollapplyr(def_qb_hits, 5, mean, partial = TRUE))
+         )
+
+indiv_defense <-
+  indiv_defense %>%
+  filter(!is.na(avg_sacks))
+```
+
+
+# Test Data
+first team defense:
+
+```{r}
+all_23 <-
+  load_player_stats(2023)
+all2_23 <- nflfastR::load_pbp(2023) %>%
+  dplyr::filter(season_type == "REG") %>%
+  nflfastR::calculate_player_stats_def(weekly = TRUE)
+```
+
+```{r}
+all3_23 <- left_join(all2_23, all_23, by = c('season','player_id', 'player_name', 'player_display_name', 'position', 'position_group', 'week'))
+```
+
+```{r}
+defense_group_23 <-
+  all3_23 %>%
+  filter(position_group == 'DB' | position_group == 'LB')
+
+defense_group_23 <-
+  defense_group_23 %>%
+  select(-c('headshot_url.x', 'headshot_url.y'))
+  
+
+defense_group_23 <- 
+  defense_group_23 %>%
+  mutate_if(is.numeric, list(~replace_na(., 0)))
+```
+
+```{r}
+defense_group_23 <-
+  defense_group_23 %>%
+  mutate(defense_total = def_sacks + 2 * interceptions + 
+           2 * def_fumble_recovery_own + 2 * def_safety)
+
+defense_group_23$defense_total
+```
+
+```{r}
+def_select_23 <-
+  defense_group_23 %>%
+  dplyr::select('season', 'week',
+                'team', 'def_sacks', 'interceptions', 'def_fumble_recovery_own', 'def_safety', 'fantasy_points', 'defense_total')
+```
+
+```{r}
+def_select_23 <-
+  def_select_23 %>%
+  mutate(fantasy_total = fantasy_points + defense_total)
+```
+
+```{r}
+def_team_stats_23 <- def_select_23 %>%
+  group_by(season, week, team) %>%
+  summarise(across(everything(), sum),
+            .groups = 'drop') %>%
+  as.data.frame()
+```
+
+# OK now points against. 
+# Offensive team statistics will be how I do this
+
+```{r}
+offensive_team_stats_23 <- 
+  nflfastR::load_pbp(2023) %>%
+  nflfastR::calculate_player_stats(weekly = TRUE) %>%
+  filter(!position_group %in% c('DB', 'LB'),
+         season_type == 'REG')
+```
+
+```{r}
+offense_sel_23 <-
+  offensive_team_stats_23 %>%
+  select('recent_team', 'season', 'week', 'passing_yards','passing_tds', 'rushing_yards', 'rushing_tds', 
+         'receiving_yards', 'receiving_tds')
+```
+
+
+# total points from touchdowns and total yards
+```{r}
+offense_sel_23 <-
+  offense_sel_23 %>%
+  mutate(td_points = rushing_tds * 7 + passing_tds * 7,
+         total_yards = rushing_yards + passing_yards)
+```
+
+# summing by team
+
+```{r}
+off_team_stats_23 <- offense_sel_23 %>%
+  group_by(season, week, recent_team) %>%
+  summarise(across(everything(), sum),
+            .groups = 'drop') %>%
+  as.data.frame()
+```
+
+
+# preparing to join
+
+```{r}
+off_team_stats_23 <-
+  off_team_stats_23 %>%
+  rename(posteam = recent_team)
+
+def_team_stats_23 <-
+  def_team_stats_23 %>%
+  rename(defteam = team)
+```
+
+pbp data
+```{r}
+pbp_2023_join <-
+  pbp_2023 %>%
+  dplyr::select(week, posteam, defteam)
+```
+
+```{r}
+off_team_total_23 <-
+  left_join(off_team_stats_23, pbp_2023_join, by = c('posteam', 'week')) %>% distinct()
+```
+
+```{r}
+def_team_stats_nec_23 <- 
+  def_team_stats_23 %>%
+  dplyr::select('week', 'defteam', 'fantasy_total')
+```
+
+```{r}
+combo_23 <-
+  left_join(off_team_total_23, def_team_stats_nec_23, by = c('week', 'defteam'))
+```
+
+# Kicking/field goal points
+
+```{r}
+kicking_stats_23 <- 
+  nflfastR::load_pbp(2023) %>%
+  nflfastR::calculate_player_stats_kicking(weekly = TRUE) 
+```
+
+# Calculating points from field goals
+
+```{r}
+kicking_stats_23 <- 
+  kicking_stats_23 %>%
+  mutate(fg_points = fg_made * 3) %>%
+  dplyr::select('week', 'team', 'fg_points')
+
+kicking_stats_23 <-
+  kicking_stats_23 %>%
+  rename(posteam = team)
+
+kicking_stats_23[is.na(kicking_stats_23)] <- 0
+```
+
+# Joining kicking info
+
+```{r}
+final_set_23 <- left_join(combo_23, kicking_stats_23, by = c('week', 'posteam'))
+```
+
+```{r}
+final_set_23 <-
+  final_set_23 %>%
+  mutate(off_points = fg_points + td_points)
+```
+
+# defensive points for how many points were given up
+
+```{r}
+final_set_23 <-
+  final_set_23 %>%
+  mutate(points_allowed = case_when(off_points < 1 ~ 10,
+                                    off_points > 0 & off_points < 7 ~ 7,
+                                    off_points > 6 & off_points < 14 ~ 4,
+                                    off_points > 13 & off_points < 21 ~ 1,
+                                    off_points > 20 & off_points < 28 ~ 0,
+                                    off_points > 27 & off_points < 35 ~ -1, 
+                                    off_points > 34 ~ -4))
+```
+
+```{r}
+final_set_23 <-
+  final_set_23 %>%
+  mutate(points = points_allowed + fantasy_total)
+```
+
+# 5 week rolling averages
+
+```{r}
+final_set_23 <-
+  final_set_23 %>%
+  arrange(defteam, week) %>%
+  group_by(defteam) %>%
+  mutate(avg_yards = lag(rollapplyr(total_yards, 5, mean, partial = TRUE)),
+         avg_tdpoints = lag(rollapplyr(td_points, 5, mean, partial = TRUE)),
+         avg_offpoints = lag(rollapplyr(off_points, 5, mean, partial = TRUE)),
+         avg_points = lag(rollapplyr(points, 5, mean, partial = TRUE))
+         )
+
+final_set_23 <-
+  final_set_23 %>%
+  filter(!is.na(avg_yards))
+```
+
+# OK Modeling now
+
+```{r}
+def_lmer <- lmer(points ~ avg_yards + avg_offpoints + (1|posteam),
+                data = final_set)
+```
+
+testing
+```{r}
+predictions <- predict(def_lmer, newdata = final_set_23, allow.new.levels=TRUE)
+
+mse <- mean((predictions - final_set_23$points) ^ 2, na.rm = TRUE)
+mse
+rmse <- sqrt(mse)
+rmse
+```
+
+# Individual Players
+
+```{r}
+defense_group_23 <-
+  defense_group_23 %>%
+  mutate(individual_fantasy = def_tackles_solo + 0.5 * def_tackle_assists + def_tackles_for_loss + def_qb_hits + 2 * def_sacks + 3 * interceptions + def_pass_defended + 3 * def_fumbles_forced + 6 * def_tds)
+```
+
+```{r}
+def_sel2_23 <-
+  defense_group_23 %>%
+  dplyr::select('season', 'week',
+                'team', 'def_sacks', 'interceptions', 'def_fumbles_forced', 'def_tackles_solo', 'def_tackles_for_loss',
+                'def_qb_hits','individual_fantasy')
+
+def_sel2_23  <-
+  def_sel2_23 %>%
+  rename(defteam = team)
+```
+
+```{r}
+indiv_defense_23 <-
+  left_join(def_sel2, off_team_total, by = c("defteam", "week"))
+```
+
+# 5 week rolling averages
+
+```{r}
+indiv_defense_23 <-
+  indiv_defense_23 %>%
+  arrange(defteam, week) %>%
+  group_by(defteam) %>%
+  mutate(avg_sacks = lag(rollapplyr(def_sacks, 5, mean, partial = TRUE)),
+         avg_ints = lag(rollapplyr(interceptions, 5, mean, partial = TRUE)),
+         avg_tackles = lag(rollapplyr(def_tackles_solo, 5, mean, partial = TRUE)),
+         avg_qbhits = lag(rollapplyr(def_qb_hits, 5, mean, partial = TRUE))
+         )
+
+indiv_defense_23 <-
+  indiv_defense_23 %>%
+  filter(!is.na(avg_sacks))
+```
+
+modeling
+
+```{r}
+indiv_def_lmer <- lmer(individual_fantasy ~ avg_sacks + avg_ints + avg_tackles + avg_qbhits + (1|posteam),
+                       data = indiv_defense)
+summary(indiv_def_lmer)
+```
+
+
+testing
+```{r}
+predictions <- predict(indiv_def_lmer, newdata = indiv_defense_23, allow.new.levels=TRUE)
+
+mse <- mean((predictions - indiv_defense_23$individual_fantasy) ^ 2, na.rm = TRUE)
+mse
+rmse <- sqrt(mse)
+rmse
+```
+
+
+
+
