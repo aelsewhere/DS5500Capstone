@@ -1,0 +1,379 @@
+---
+title: "Kicking Fantasy Stats"
+output: html_document
+date: "2023-12-01"
+---
+
+#################################################### Train Data #####################################################################
+
+
+```{r}
+pbp_train <- load_pbp(2020:2022)
+```
+
+```{r}
+kick_stats <- pbp_train %>%
+  filter(field_goal_attempt == 1 | extra_point_attempt == 1) %>%
+  select(game_id, week, kicker_player_id, kicker_player_name, posteam, field_goal_result, kick_distance, extra_point_result) %>%
+  filter(!is.na(posteam)) %>%
+  mutate(field_goal_result = ifelse(is.na(field_goal_result), "None", field_goal_result),
+         extra_point_result = ifelse(is.na(extra_point_result), "None", extra_point_result),
+         fg_points = case_when(
+    field_goal_result == "made" & kick_distance >= 0 & kick_distance <= 39 ~ 3,
+    field_goal_result == "made" & kick_distance >= 40 & kick_distance <= 49 ~ 4,
+    field_goal_result == "made" & kick_distance >= 50 & kick_distance <= 59 ~ 5,
+    field_goal_result == "made" & kick_distance >= 60 ~ 5),
+  fg_missed = ifelse(field_goal_result == "missed" | field_goal_result == "blocked", 1, 0),
+  xp_missed = ifelse(extra_point_result == "missed" | extra_point_result == "blocked", 1, 0),
+  fg_points = ifelse(is.na(fg_points), 0, fg_points)
+  ) %>%
+  group_by(game_id, kicker_player_id, kicker_player_name, posteam) %>%
+  summarise(fg_points = sum(fg_points), fg_missed = sum(fg_missed), xp_missed = sum(xp_missed)) %>%
+  mutate(kick_fan_points = fg_points - fg_missed - xp_missed)
+  
+
+```
+
+
+```{r}
+
+  blocked_kicks <- pbp_train %>%
+  select(game_id, week, defteam, field_goal_result, extra_point_result) %>%
+  filter(!is.na(defteam)) %>%
+  mutate(fg_block = ifelse(is.na(field_goal_result), "none", field_goal_result), 
+         fg_blocked = ifelse(fg_block == "blocked", 1,0),
+         xp_block = ifelse(is.na(extra_point_result), "none", extra_point_result), 
+         xp_blocked = ifelse(xp_block == "blocked", 1,0),
+         ) %>%
+  select(game_id, week, defteam, fg_blocked, xp_blocked) %>%
+  group_by(game_id, week, defteam) %>%
+  summarise(fg_blocked = sum(fg_blocked), xp_blocked = sum(xp_blocked)) %>%
+  ungroup()
+
+```
+
+
+
+```{r}
+def_stats <- pbp_train %>%
+  filter(!is.na(posteam)) %>%
+  select(game_id, week, posteam, defteam, yards_gained, success, touchdown, interception, fumble_lost, sack) %>%
+    replace(is.na(.), 0) %>%
+  group_by(game_id, week, posteam, defteam) %>%
+  summarize(total_yards_allowed = sum(yards_gained), success_rate_against = mean(success), total_tds_allowed = sum(touchdown), interceptions_forced = sum(interception), fumbles_forced = sum(fumble_lost), sacks_forced = sum(sack)) %>%
+  ungroup()
+  
+```
+
+```{r}
+off_stats <- pbp_train %>%
+  select(game_id, week, posteam, defteam, yards_gained, drive_inside20, success, field_goal_attempt, extra_point_attempt) %>%
+  filter(!is.na(posteam)) %>%
+  replace(is.na(.), 0) %>%
+   group_by(game_id, week, posteam, defteam) %>%
+  summarise(off_total_yds = sum(yards_gained), off_drives_inside20 = sum(drive_inside20), off_avg_success = mean(success), fg_attempts = sum(field_goal_attempt), xp_attempts = sum(extra_point_attempt)) %>%
+  ungroup()
+  
+```
+
+```{r}
+
+kick_fantasy_points <- kick_stats %>%
+  select(game_id, kicker_player_name, posteam, kick_fan_points )
+
+combined <- off_stats %>%
+  left_join(kick_fantasy_points, by = c("game_id", "posteam")) %>%
+  left_join(def_stats, by = c("game_id", "week", "posteam", "defteam")) %>%
+  left_join(blocked_kicks, by = c("game_id", "week", "defteam"))
+  
+
+```
+
+
+
+################################################# Test Data ###########################################
+
+```{r}
+pbp_test <- load_pbp(2023)
+```
+
+
+
+```{r, warning=FALSE, message=FALSE}
+kick_stats_test <- pbp_test %>%
+  filter(field_goal_attempt == 1 | extra_point_attempt == 1) %>%
+  filter(week == 12) %>%
+  select(game_id, week, kicker_player_id, kicker_player_name, posteam, defteam, field_goal_result, kick_distance, extra_point_result) %>%
+  filter(!is.na(posteam)) %>%
+  mutate(field_goal_result = ifelse(is.na(field_goal_result), "None", field_goal_result),
+         extra_point_result = ifelse(is.na(extra_point_result), "None", extra_point_result),
+         fg_points = case_when(
+    field_goal_result == "made" & kick_distance >= 0 & kick_distance <= 39 ~ 3,
+    field_goal_result == "made" & kick_distance >= 40 & kick_distance <= 49 ~ 4,
+    field_goal_result == "made" & kick_distance >= 50 & kick_distance <= 59 ~ 5,
+    field_goal_result == "made" & kick_distance >= 60 ~ 5),
+  fg_missed = ifelse(field_goal_result == "missed" | field_goal_result == "blocked", 1, 0),
+  xp_missed = ifelse(extra_point_result == "missed" | extra_point_result == "blocked", 1, 0),
+  fg_points = ifelse(is.na(fg_points), 0, fg_points)
+  ) %>%
+  group_by(game_id, week, kicker_player_id, kicker_player_name, posteam, defteam) %>%
+  summarise(fg_points = sum(fg_points), fg_missed = sum(fg_missed), xp_missed = sum(xp_missed)) %>%
+  mutate(kick_fan_points = fg_points - fg_missed - xp_missed) %>%
+  ungroup()
+  
+
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+weeks = 12
+
+  blocked_kicks_test <- pbp_test %>%
+  select(game_id, week, defteam, field_goal_result, extra_point_result) %>%
+  filter(!is.na(defteam)) %>%
+  filter(week < weeks) %>%
+  mutate(fg_block = ifelse(is.na(field_goal_result), "none", field_goal_result), 
+         fg_blocked = ifelse(fg_block == "blocked", 1,0),
+         xp_block = ifelse(is.na(extra_point_result), "none", extra_point_result), 
+         xp_blocked = ifelse(xp_block == "blocked", 1,0),
+         ) %>%
+  select(game_id, week, defteam, fg_blocked, xp_blocked) %>%
+  group_by(defteam) %>%
+  summarise(fg_blocked = sum(fg_blocked), xp_blocked = sum(xp_blocked)) %>%
+  ungroup() %>%
+  group_by(defteam) %>%
+  summarise(fg_blocked = (fg_blocked/(weeks -1)), xp_blocked = (xp_blocked/(weeks - 1))) %>%
+  ungroup()
+
+```
+
+
+
+```{r, warning=FALSE, message=FALSE}
+weeks = 12
+
+def_stats_test <- pbp_test %>%
+  filter(!is.na(posteam)) %>%
+  select(game_id, week, defteam, yards_gained, success, touchdown, interception, fumble_lost, sack) %>%
+  filter(week < weeks) %>%
+    replace(is.na(.), 0) %>%
+  group_by(defteam) %>%
+  summarize(total_yards_allowed = sum(yards_gained), success_rate_against = mean(success), total_tds_allowed = sum(touchdown), interceptions_forced = sum(interception), fumbles_forced = sum(fumble_lost), sacks_forced = sum(sack)) %>%
+  ungroup()%>%
+  group_by(defteam) %>%
+  summarize(total_yards_allowed = (total_yards_allowed/(weeks - 1)), success_rate_against = (success_rate_against), total_tds_allowed = (total_tds_allowed/(weeks - 1)), interceptions_forced = (interceptions_forced/(weeks - 1)), fumbles_forced = (fumbles_forced/(weeks - 1)), sacks_forced = (sacks_forced/(weeks - 1))) %>%
+  ungroup()
+  
+```
+
+
+ 
+
+```{r, warning=FALSE, message=FALSE}
+weeks = 12
+
+off_stats_test <- pbp_test %>%
+  select(game_id, week, posteam, yards_gained, drive_inside20, success, field_goal_attempt, extra_point_attempt) %>%
+  filter(!is.na(posteam)) %>%
+  replace(is.na(.), 0) %>%
+  filter(week < weeks) %>%
+   group_by(posteam) %>%
+  summarise(off_total_yds = sum(yards_gained), off_drives_inside20 = sum(drive_inside20), off_avg_success = mean(success), fg_attempts = sum(field_goal_attempt), xp_attempts = sum(extra_point_attempt)) %>%
+  ungroup()%>%
+   group_by(posteam) %>%
+  summarise(off_total_yds = (off_total_yds/(weeks - 1)), off_drives_inside20 = (off_drives_inside20/(weeks - 1)), off_avg_success = (off_avg_success), fg_attempts = (fg_attempts/(weeks - 1)), xp_attempts = (xp_attempts/(weeks - 1))) %>%
+  ungroup()
+  
+```
+
+```{r}
+
+sched <- load_schedules(2023) %>%
+  filter(week == 12) %>%
+  select(game_id, home_team, away_team)
+
+```
+
+
+```{r, warning=FALSE, message=FALSE1}
+
+kick_fantasy_points_actual <- kick_stats_test %>%
+  select( kicker_player_name, posteam, defteam, kick_fan_points )
+
+sched_away <- off_stats_test %>%
+  left_join(sched, by = c("posteam" = "away_team")) %>%
+  mutate(defteam = home_team) %>%
+    select(-home_team) %>%
+  filter(!is.na(defteam))
+
+sched_home <- off_stats_test %>%
+  left_join(sched, by = c("posteam" = "home_team")) %>%
+  mutate(defteam = away_team) %>%
+    select(-away_team) %>%
+  filter(!is.na(defteam))
+
+final_result <- bind_rows(sched_away, sched_home)
+
+combined_test <- final_result %>%
+  left_join(def_stats_test, by = "defteam") %>%
+  left_join(blocked_kicks_test, by = "defteam")
+
+combined_test <- kick_fantasy_points_actual %>%
+  left_join(combined_test, by = c("posteam", "defteam") )
+
+
+```
+
+
+
+
+################################################## Multiple Regression ############################################
+
+
+```{r}
+
+kick_fan_score_model_train <- combined %>%
+  select(-c(game_id, week, defteam, posteam, kicker_player_id, kicker_player_name))
+
+kick_fan_score_model_test <- combined_test %>%
+  select(-c(game_id, week, defteam, posteam, kicker_player_id, kicker_player_name, kick_fan_points))
+
+lm_model <- lm(kick_fan_points ~ ., data = kick_fan_score_model_train)
+summary(lm_model)
+
+```
+
+```{r}
+
+kick_fantasy_points_actual_lm <- kick_fantasy_points_actual
+
+test_predictions_lm <- predict(lm_model, newdata = kick_fan_score_model_test)
+
+
+kick_fantasy_points_actual_lm$pred_fan_points <- test_predictions_lm
+
+```
+
+```{r}
+residuals_lm <- kick_fantasy_points_actual_lm$kick_fan_points - test_predictions_lm
+
+rmse_lm <- sqrt(mean(residuals_lm^2))
+
+print(paste("RMSE for Linear Regression Model:", rmse_lm))
+```
+
+
+
+######################################################## Best Subset ############################################
+
+```{r}
+library(leaps)
+
+model <- regsubsets(kick_fan_points ~ ., data = kick_fan_score_model_train)
+
+best_model <- which.max(summary(model)$adjr2)
+
+
+coef(model, id = best_model)
+```
+
+```{r}
+
+best_model <- lm(kick_fan_points ~ off_total_yds + off_drives_inside20 + interceptions_forced + fumbles_forced + total_yards_allowed  + fg_blocked + fg_attempts, data = kick_fan_score_model_train)
+summary(best_model)
+
+```
+
+```{r}
+kick_fantasy_points_actual_best <- kick_fantasy_points_actual
+
+test_predictions_best <- predict(best_model, newdata = kick_fan_score_model_test)
+
+
+kick_fantasy_points_actual_best$pred_fan_points <- test_predictions_best
+
+```
+
+
+```{r}
+residuals_best <- kick_fantasy_points_actual_best$kick_fan_points - test_predictions_best
+
+rmse_best <- sqrt(mean(residuals_best^2))
+
+print(paste("RMSE for the Best Subset Linear Regression Model:", rmse_best))
+```
+
+
+
+
+########################################################### Ridge Regression ###################################################
+
+
+```{r}
+# Load required libraries
+library(glmnet)
+
+# Define the response variable
+response_variable <- "kick_fan_points"
+
+# Select predictors and response variable for training set
+kick_fan_score_model_train <- combined %>%
+  select(-c(game_id, week, defteam, posteam, kicker_player_id, kicker_player_name))
+
+# Select predictors for testing set
+kick_fan_score_model_test <- combined_test %>%
+  select(-c(game_id, defteam, posteam, kicker_player_name, kick_fan_points))
+
+kick_fan_score_model_train <- kick_fan_score_model_train %>%
+  na.omit()
+
+# Convert to matrix format (required by glmnet)
+X_train <- as.matrix(kick_fan_score_model_train %>% select(-response_variable))
+y_train <- kick_fan_score_model_train[[response_variable]]
+
+# Convert to matrix format for testing set
+X_test <- as.matrix(kick_fan_score_model_test)
+
+# Fit ridge regression model
+alpha <- 0  # Ridge regression (alpha = 0)
+ridge_model <- glmnet(X_train, y_train, alpha = alpha)
+
+# Predict using the ridge model
+test_predictions_ridge <- predict(ridge_model, newx = X_test)
+
+# Extract the coefficients from the ridge model
+ridge_coeffs <- coef(ridge_model)
+
+# Combine the intercept and coefficients
+ridge_intercept <- ridge_coeffs[1]
+ridge_coef <- as.vector(ridge_coeffs[-1])
+
+# Combine coefficients and variable names
+ridge_coef_names <- colnames(X_train)
+ridge_model_summary <- data.frame(variable = c("(Intercept)", ridge_coef_names),
+                                   coefficient = c(ridge_intercept, ridge_coef))
+
+# Print the ridge regression coefficients
+print("Ridge Regression Coefficients:")
+print(ridge_model_summary)
+
+# Evaluate performance on the testing set
+residuals_ridge <- kick_fantasy_points_actual$kick_fan_points - test_predictions_ridge
+rmse_ridge <- sqrt(mean(residuals_ridge^2))
+
+# Print the RMSE for ridge regression
+print(paste("RMSE for Ridge Regression Model:", rmse_ridge))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
