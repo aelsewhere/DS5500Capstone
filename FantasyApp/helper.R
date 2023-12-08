@@ -228,7 +228,6 @@ merged_stats <- left_join(
 ) %>%
   filter(position %in% positions) %>%
   select(-c(player_display_name, season, season_type, wopr, special_teams_tds))
-
 merged_stats_test <- left_join(
   weekly_stats_test,
   def_stats_allowed_test,
@@ -645,7 +644,6 @@ for (target_var in target_variables) {
   pred_column_name <- paste("pred", target_var, sep = "_")
   merged_stats_test[[pred_column_name]] <- test_predictions
 }
-
 merged_stats_test_important <- merged_stats_test %>%
   select(
     player_name,
@@ -1332,7 +1330,6 @@ all2 <- pbp_2020 %>%
   filter(season_type == "REG") %>%
   nflfastR::calculate_player_stats_def(weekly = TRUE)
 
-# Defensive Players
 all3 <- left_join(
   all2, all,
   by = c(
@@ -1341,7 +1338,6 @@ all3 <- left_join(
     "week"
   )
 )
-
 defense_group <- all3 %>%
   filter(position_group == "DB" | position_group == "LB") %>%
   select(-c("headshot_url.x", "headshot_url.y")) %>%
@@ -1352,7 +1348,6 @@ defense_group <- all3 %>%
     2 * def_fumble_recovery_own +
     2 * def_safety
   )
-
 def_select <- defense_group %>%
   select(
     "season", "week", "team", "def_sacks", "interceptions",
@@ -1360,7 +1355,6 @@ def_select <- defense_group %>%
     "defense_total"
   ) %>%
   mutate(fantasy_total = fantasy_points + defense_total)
-
 def_team_stats <- def_select %>%
   group_by(season, week, team) %>%
   summarize(
@@ -1373,7 +1367,6 @@ def_team_stats <- def_select %>%
 offensive_team_stats <- pbp_2020 %>%
   nflfastR::calculate_player_stats(weekly = TRUE) %>%
   filter(!position_group %in% c("DB", "LB"), season_type == "REG")
-
 offense_sel <- offensive_team_stats %>%
   select(
     "recent_team", "season", "week", "passing_yards", "passing_tds",
@@ -1383,8 +1376,6 @@ offense_sel <- offensive_team_stats %>%
     td_points = rushing_tds * 7 + passing_tds * 7,
     total_yards = rushing_yards + passing_yards
   )
-
-# offensive team stats by team
 off_team_stats <- offense_sel %>%
   group_by(season, week, recent_team) %>%
   summarize(
@@ -1403,10 +1394,8 @@ off_team_total <- left_join(
   by = c("posteam", "week")
 ) %>%
   distinct()
-
 def_team_stats_nec <- def_team_stats %>%
   select("week", "defteam", "fantasy_total")
-
 combo <- left_join(
   off_team_total,
   def_team_stats_nec,
@@ -1420,7 +1409,6 @@ kicking_stats <- pbp_2020 %>%
   select("week", "team", "fg_points") %>%
   rename(posteam = team)
 kicking_stats[is.na(kicking_stats)] <- 0
-
 final_set <- left_join(
   combo,
   kicking_stats,
@@ -1481,7 +1469,6 @@ defense_group_indiv <- defense_group %>%
     3 * interceptions + def_pass_defended +
     3 * def_fumbles_forced + 6 * def_tds
   )
-
 def_sel2 <- defense_group_indiv %>%
   select(
     "season", "week", "team", "def_sacks",
@@ -1490,7 +1477,6 @@ def_sel2 <- defense_group_indiv %>%
     "def_qb_hits", "individual_fantasy"
   ) %>%
   rename(defteam = team)
-
 indiv_defense <- left_join(
   def_sel2, off_team_total,
   by = c("defteam", "week")
@@ -1504,8 +1490,7 @@ indiv_defense <- left_join(
     avg_qbhits = lag(rollapplyr(def_qb_hits, 5, mean, partial = TRUE))
   ) %>%
   filter(!is.na(avg_sacks))
-
-indiv_def_lmer <- lmer( # ERROR: INDIVIDUAL FANTASY NOT FOUND
+indiv_def_lmer <- lmer(
   individual_fantasy ~ avg_sacks + avg_ints + avg_tackles +
   avg_qbhits + (1|posteam),
   data = indiv_defense
@@ -1596,7 +1581,7 @@ blocked_kicks <- def_stats %>%
   summarise(fg_blocked = sum(fg_blocked), xp_blocked = sum(xp_blocked)) %>%
   ungroup()
 
-def_stats <- def_stats %>%
+defense_stats <- def_stats %>%
   filter(!is.na(posteam)) %>%
   select(
     game_id, week, posteam, defteam, yards_gained, success, touchdown,
