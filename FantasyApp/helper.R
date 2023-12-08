@@ -3,7 +3,8 @@ libs <- c(
   "dplyr", "zoo", "rsample", "lme4", "tidyverse",
   "nflfastR", "randomForest", "glmnet", "ggplot2",
   "lmerTest", "caret", "ggrepel", "nflplotR", "stringr",
-  "nflreadr", "tictoc", "leaps", "tidymodels"
+  "nflreadr", "tictoc", "leaps", "tidymodels", "plotly",
+  "gridlayout"
 )
 invisible(lapply(libs, library, character.only = TRUE))
 
@@ -1123,12 +1124,6 @@ te_extra <- te_extra %>%
 set.seed(10)
 
 # Model train/test
-data_split <- initial_split(
-  qb_model,
-  strata = "fantasy_points",
-  prop = 3 / 4
-)
-
 qb_model <- qb_extra %>%
   dplyr::select(
     week,
@@ -1146,6 +1141,11 @@ qb_model <- qb_extra %>%
     !is.na(fantasy_points)
   )
 qb_model <- na.omit(qb_model)
+data_split <- initial_split(
+  qb_model,
+  strata = "fantasy_points",
+  prop = 3 / 4
+)
 qb_train <- na.omit(training(data_split))
 qb_test <- na.omit(testing(data_split))
 qb_lm_mod <- lm(
@@ -1159,9 +1159,6 @@ qb_lm_mod <- lm(
   data = qb_extra
 )
 qb_pred_lm <- predict(qb_lm_mod, newdata = qb_test)
-qb_mse <- mean((qb_pred_lm - qb_test$fantasy_points) ** 2)
-qb_remse <- sqrt(qb_mse)
-# plot(residuals(qb_lm_mod) ~ fitted(qb_lm_mod), data = qb_test)
 qb_lmer <- lmer(
   fantasy_points ~ avg_passing_yards +
     avg_rushing_yards +
@@ -1171,20 +1168,12 @@ qb_lmer <- lmer(
 )
 qb_pred_mem <- predict(qb_lmer, newdata = qb_test)
 qb_test$pred <- qb_pred_mem
-qb_extra$pred <- predict(qb_lmer) # ERROR: CANT RECYCLE INPUT OF SIZE
-qb_test <- qb_test %>%                # 521 to size 580 
+qb_extra$pred <- predict(qb_lmer, new_data = qb_extra, allow.new.levels = TRUE)
+qb_test <- qb_test %>%
   group_by(player_name) %>%
   mutate(row_count = n())
 qb_top <- qb_extra %>%
   filter(row_count > 10)
-#ggplot(
-#  data = qb_top,
-#  aes(x = week, y = fantasy_points, group = player_name)
-#) + geom_point(
-#    x = qb_top$week,
-#    y = qb_top$pred,
-#    group = gp_top$player_name
-#  ) + facet_wrap(~player_name, ncol = 9)
 
 
 wr_model <- wr_extra %>%
@@ -1203,6 +1192,14 @@ wr_model <- wr_extra %>%
     !is.na(avg_fantasy_pts),
     !is.na(fantasy_points)
   )
+wr_model <- na.omit(wr_model)
+wr_data_split <- initial_split(
+  wr_model,
+  strata = "fantasy_points",
+  prop = 3 / 4
+)
+wr_train <- na.omit(training(wr_data_split))
+wr_test <- na.omit(testing(wr_data_split))
 wr_lm_mod <- lm(
   fantasy_points ~ avg_rushing_yards +
     avg_receiving_yards +
@@ -1221,18 +1218,9 @@ wr_lmer <- lmer(
     (1 | defteam),
   data = wr_extra
 )
-# summary(wr_lmer)
 wr_extra <- wr_extra %>%
   filter(!is.na(avg_fantasy_pts))
 wr_extra$pred <- predict(wr_lmer)
-wr_top <- wr_extra %>%        # ERROR: OBJECT ROW COUNT NOT FOUND
-  filter(row_count > 10)
-#ggplot( # FIX WR_TOP FIRST
-#  data = wr_top,
-#  aes(x = week, y = fantasy_points, group = player_name)
-#) + geom_line() + geom_point(
-#  x = wr_top$week, y = wr_top$pred, group = wr_top$player_name
-#) + facet_wrap(~player_name, ncol = 9)
 
 
 rb_model <- rb_extra %>%
@@ -1251,6 +1239,14 @@ rb_model <- rb_extra %>%
     !is.na(avg_fantasy_pts),
     !is.na(fantasy_points)
   )
+rb_model <- na.omit(rb_model)
+rb_data_split <- initial_split(
+  rb_model,
+  strata = "fantasy_points",
+  prop = 3 / 4
+)
+rb_train <- na.omit(training(rb_data_split))
+rb_test <- na.omit(testing(rb_data_split))
 rb_lmer <- lmer(
   fantasy_points ~ avg_receiving_yards +
     avg_rushing_yards +
@@ -1258,18 +1254,9 @@ rb_lmer <- lmer(
     (1 | defteam),
   data = rb_extra
 )
-# summary(rb_lmer)
 rb_extra <- rb_extra %>%
   filter(!is.na(avg_fantasy_pts))
 rb_extra$pred <- predict(rb_lmer)
-rb_top <- rb_extra %>%
-  filter(row_count > 10)
-#ggplot( # ERROR - NO FUNCTION GEOM_POINTS
-#  data = rb_top,
-#  aes(x = week, y = fantasy_points, group = player_name)
-#) + geom_line() + geom_points(
-#  x = rb_top$week, y = rb_top$pred, group = player_name
-#) + facet_wrap(~player_name, ncol = 0)
 
 
 te_model <- te_extra %>%
@@ -1288,9 +1275,13 @@ te_model <- te_extra %>%
     !is.na(avg_fantasy_pts),
     !is.na(fantasy_points)
   )
-
-# Mixed Effects
-
+te_data_split <- initial_split(
+  te_model,
+  strata = "fantasy_points",
+  prop = 3 / 4
+)
+te_train <- na.omit(training(te_data_split))
+te_test <- na.omit(testing(te_data_split))
 te_lmer <- lmer(
   fantasy_points ~ avg_receiving_yards +
     avg_rushing_yards +
@@ -1298,17 +1289,9 @@ te_lmer <- lmer(
     (1 | defteam),
   data = te_extra
 )
-
-summary(te_lmer)
-
 te_extra <- te_extra %>%
   filter(!is.na(avg_fantasy_pts))
-
 te_extra$pred <- predict(te_lmer)
-
-te_top <- te_extra %>%
-  filter(row_count > 10)
-
 
 
 
@@ -1343,7 +1326,7 @@ te_top <- te_extra %>%
 #################################################################
 #################################################################
 
-# pbp_2020 defined in start of position modeling nflreadr::loadpbp(2020)
+# pbp_2020 defined in start of position modeling 
 all <- load_player_stats(2020)
 all2 <- pbp_2020 %>%
   filter(season_type == "REG") %>%
@@ -1513,7 +1496,7 @@ indiv_defense <- left_join(
   by = c("defteam", "week")
 ) %>%
   arrange(defteam, week) %>%
-  groupby(defteam) %>%
+  group_by(defteam) %>%
   mutate(
     avg_sacks = lag(rollapplyr(def_sacks, 5, mean, partial = TRUE)),
     avg_ints = lag(rollapplyr(interceptions, 5, mean, partial = TRUE)),
@@ -1522,17 +1505,11 @@ indiv_defense <- left_join(
   ) %>%
   filter(!is.na(avg_sacks))
 
-indiv_def_lmer <- lmer(
-  inidividual_fantasy ~ avg_sacks + avg_ints + avg_tackles +
+indiv_def_lmer <- lmer( # ERROR: INDIVIDUAL FANTASY NOT FOUND
+  individual_fantasy ~ avg_sacks + avg_ints + avg_tackles +
   avg_qbhits + (1|posteam),
   data = indiv_defense
 )
-
-
-
-
-
-
 
 
 
@@ -1732,36 +1709,6 @@ ridge_model_summary <- data.frame(
   variable = c("(Intercept)", ridge_coef_names),
   coefficient = c(ridge_intercept, ridge_coef)
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ##################################################################
 ##################################################################
