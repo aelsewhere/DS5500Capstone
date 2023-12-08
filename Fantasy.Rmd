@@ -5,8 +5,8 @@ date: "2023-10-06"
 ---
 
 ```{r setup, include=FALSE}
-#install.packages('nflfastR')
-#install.packages('glmnet')
+install.packages('nflfastR')
+install.packages('glmnet')
 install.packages('caret')
 ```
 
@@ -233,6 +233,13 @@ suppressWarnings({
 
 ```
 
+```{r save}
+
+# save
+write.csv(fantasy_points, file = "offensive_fantasy_points.csv", row.names = FALSE)
+
+```
+
 ```{r confirmation}
 
 head(fantasy_points, 10)
@@ -251,7 +258,6 @@ play_id_54_rows <- fantasy_points[fantasy_points$play_id == 54, ]
 
 print(play_id_54_rows)
 
-# Assuming your fantasy points dataframe is called fantasy_points
 player_id_to_find <- "00-0031543"
 
 # Find rows with the specified player_id
@@ -292,7 +298,6 @@ player_totals <- fantasy_points %>%
 # Print the result
 print(player_totals)
 
-# Assuming your fantasy points dataframe is called fantasy_points
 player_id_to_find <- "00-0031543"
 
 # Find rows with the specified player_id
@@ -302,35 +307,6 @@ player_rows <- player_totals[player_totals$player_id == player_id_to_find, ]
 print(player_rows)
 
 ```
-
-
-```{r hist}
-# Sort the vector in ascending order
-sorted_points <- sort(cleaned_total_points)
-
-# Use head() to display the 10 smallest values
-smallest_values <- head(sorted_points, 10)
-
-# Print the 10 smallest values
-print(smallest_values)
-
-# Print player IDs where total points are -2.8
-subset(player_totals, total_points == -2.8)$player_id
-
-cleaned_total_points <- player_totals$total_points[is.finite(player_totals$total_points)]
-
-# Create a histogram of total player points with custom breaks and labels
-hist(cleaned_total_points, 
-     main = "Histogram of Total Player Points",
-     xlab = "Total Points",
-     ylab = "Frequency",
-     col = "skyblue",
-     border = "black",
-     breaks = seq(-5, max(cleaned_total_points) + 10, by = 5),  # Adjust bin width (5) as needed
-     labels = TRUE)  # Display labels on the x-axis
-
-```
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 
 ```{r player stats}
@@ -357,18 +333,6 @@ fantasy_points_trial <- fantasy_points %>%
 # Fill any NA values with 0
 #fantasy_points_trial[is.na(fantasy_points)] <- 0
 
-# Encode side_of_field using binary encoding
-fantasy_points_trial <- fantasy_points %>%
-  mutate(side_of_field_encoded = as.numeric(side_of_field %in% teams))
-
-# Encode side_of_field based on home_team, away_team, and 50
-fantasy_points_trial <- fantasy_points %>%
-  mutate(
-    side_of_field_encoded = ifelse(side_of_field == home_team, 0,
-                                    ifelse(side_of_field == away_team, 1,
-                                           ifelse(side_of_field == "50", 50, NA)))
-  )
-
 # Convert game_date to Date format
 fantasy_points_trial <- fantasy_points %>%
   mutate(game_date = ymd(game_date))
@@ -378,27 +342,10 @@ clean_and_convert_time <- function(x) {
   ifelse(is.na(x), NA, as.hms(ifelse(x == "h:mm:ss", "00:00:00", as.character(x))))
 }
 
-
 # Apply the cleaning and conversion to the time_of_day column
 fantasy_points_trial <- fantasy_points%>%
   mutate(time_of_day = clean_and_convert_time(time_of_day))
 
-
-# Encode play_type
-#play_types <- c("pass", "run", "qb_spike", "qb_kneel", #"no_play")  # Replace with your unique play_type values
-
-#fantasy_points_trial <- fantasy_points %>%
-#  mutate(play_type_encoded = as.numeric(play_type %in% #play_types))
-
-
-# Create a factor variable for stadium
-#fantasy_points_trial$stadium_factor <- #factor(fantasy_points_trial$stadium, levels = #unique(fantasy_points_trial$stadium))
-
-# Convert the factor to numeric
-#fantasy_points_trial$stadium_encoded <- #as.numeric(fantasy_points_trial$stadium_factor)
-
-# Remove the temporary factor variable if needed
-#fantasy_points_trial$stadium_factor <- NULL
 
 # Define a custom function to map weather values to their corresponding categories
 map_weather <- function(weather) {
@@ -501,17 +448,6 @@ fantasy_points_trial <- fantasy_points_trial %>%
 fantasy_points_trial <- fantasy_points_trial %>%
   mutate(end_clock_time = hm(end_clock_time))
 
-# Encode play_type_nfl
-#play_types_nfl <- c("PASS", "RUSH", "SACK", "PAT2", "PENALTY")
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(play_type_nfl_encoded = case_when(
-#    play_type_nfl == "PASS" ~ 1,
-#    play_type_nfl == "RUSH" ~ 2,
-#    play_type_nfl == "SACK" ~ 3,
-#    play_type_nfl == "PAT2" ~ 4,
-#    play_type_nfl == "PENALTY" ~ 5,
-#    TRUE ~ 0  # Handle any other values
-#  ))
 
 # Encode location
 fantasy_points_trial <- fantasy_points_trial %>%
@@ -519,52 +455,6 @@ fantasy_points_trial <- fantasy_points_trial %>%
     location == "Home" ~ 1,
     location == "Neutral" ~ 0
   ))
-
-# Encode roof
-#roofs <- c("outdoors", "dome", "closed")
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(roof_encoded = case_when(
-#    roof == "outdoors" ~ 1,
-#    roof == "dome" ~ 2,
-#    roof == "closed" ~ 3,
-#    TRUE ~ 0  # Handle any other values
-#  ))
-
-# Encode surface
-#surfaces <- c("grass", "fieldturf", "matrixturf", "sportturf", "astroturf")
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(surface_encoded = case_when(
-#    surface == "grass" ~ 1,
-#    surface == "fieldturf" ~ 2,
-#    surface == "matrixturf" ~ 3,
-#    surface == "sportturf" ~ 4,
-#    surface == "astroturf" ~ 5,
-#    TRUE ~ 0  # Handle any other values
-#  ))
-
-# Encode coach
-#coaches <- c("Kyle Shanahan", "Matt Patricia", "John Harbaugh", #"Sean McVay", "Mike Zimmer", "Andy Reid", "Doug Marrone", "Zac #Taylor", "Matt Rhule", "Bill Belichick", "Sean McDermott", "Ron #Rivera", "Joe Judge", "Dan Quinn", "Sean Payton", "Vic Fangio", #"Mike McCarthy", "Bill O'Brien", "Brian Flores", "Bruce #Arians", "Kevin Stefanski", "Mike Tomlin", "Matt LaFleur", #"Mike Vrabel", "Anthony Lynn", "Doug Pederson", "Frank Reich", #"Pete Carroll", "Jon Gruden", "Matt Nagy", "Adam Gase", "Kliff #Kingsbury", "Romeo Crennel", "Raheem Morris", "Darrell Bevell")
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(home_coach_encoded = case_when(
-#    home_coach %in% coaches ~ as.numeric(factor(home_coach, #levels = coaches)),
-#    TRUE ~ 0  # Handle any other values
-#  ))
-#
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(away_coach_encoded = case_when(
-#    away_coach %in% coaches ~ as.numeric(factor(away_coach, #levels = coaches)),
-#    TRUE ~ 0  # Handle any other values
-#  ))
-
-#results <- c("First down", "Field goal", "Punt", "Touchdown", #"Turnover on downs", "Missed field goal", "Turnover", "QB #kneel", "End of half", "Safety", "Opp touchdown")
-
-#fantasy_points_trial <- fantasy_points_trial %>%
-#  mutate(series_result_encoded = case_when(
-#    series_result %in% results ~ #as.numeric(factor(series_result, levels = results)),
-#    TRUE ~ 0  # Handle any other values
-#  ))
-
-
 
 # Extract the week from the game_id using regular expressions
 fantasy_points_trial$week <- as.numeric(sub(".*_(\\d+)_.*", "\\1", fantasy_points_trial$game_id))
@@ -610,7 +500,7 @@ ggplot(subset_fantasy_points, aes(x = factor(week), y = points)) +
 ```{r points by week}
 
 player_points_by_week <- subset_fantasy_points %>%
-  group_by(player_id, week, own_score, opp_score, temperature, humidity, wind_speed, stadium, posteam, weather_category, wind_direction_degrees, location_encoded, roof, surface, own_coach, opp_coach, play_type_nfl, play_type, series_result) %>%
+  group_by(player_id, week, own_score, opp_score, temperature, humidity, wind_speed, stadium, posteam, weather_category, wind_direction_degrees, location_encoded, roof, surface, own_coach, opp_coach) %>%
   summarise(points = sum(points))
 
 # Impute missing values for wind_direction_degrees with the mean
@@ -635,17 +525,6 @@ player_points_by_week <- player_points_by_week %>%
                names_prefix = "")
 
 
-# Create binary columns for each play type
-player_points_by_week <- player_points_by_week %>%
-  pivot_wider(names_from = play_type, values_from = play_type,
-               values_fn = function(x) as.numeric(!is.na(x)),
-               names_prefix = "")
-
-# Create binary columns for each series result type
-player_points_by_week <- player_points_by_week %>%
-  pivot_wider(names_from = series_result, values_from = series_result,
-               values_fn = function(x) as.numeric(!is.na(x)),
-               names_prefix = "")
 
 # Create binary columns for each weather type
 player_points_by_week <- player_points_by_week %>%
@@ -665,17 +544,16 @@ player_points_by_week <- player_points_by_week %>%
                values_fn = function(x) as.numeric(!is.na(x)),
                names_prefix = "")
 
-# Create binary columns for each nfl play type
-player_points_by_week <- player_points_by_week %>%
-  pivot_wider(names_from = play_type_nfl, values_from = play_type_nfl,
-               values_fn = function(x) as.numeric(!is.na(x)),
-               names_prefix = "")
-
 # Create binary columns for each opponent coach
 player_points_by_week <- player_points_by_week %>%
   pivot_wider(names_from = opp_coach, values_from = opp_coach,
                values_fn = function(x) as.numeric(!is.na(x)),
-               names_prefix = "")
+               names_prefix = "op_")
+
+player_points_by_week <- player_points_by_week %>%
+  pivot_wider(names_from = own_coach, values_from = own_coach,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "own_")
 
 # Fill any NA values with 0
 player_points_by_week[is.na(player_points_by_week)] <- 0
@@ -705,75 +583,40 @@ print(player_points_by_week)
 
 
 ```{r summary}
+
+player_points_by_week <- player_points_by_week %>%
+  select(-posteam)
+
 weekly_player_points <- player_points_by_week %>%
-  group_by(player_id, week, temperature, humidity, wind_speed, posteam, wind_direction_degrees, location_encoded) %>%
-  summarise(points = sum(points))
+  group_by(player_id, week) %>%
+  summarise(
+    points = sum(points),
+    across(-points, ~ mean(.))
+  )
 
-
-
+#remove this part if it throws an error for the full run through
+weekly_player_points <- weekly_player_points %>%
+  select(-posteam)
+  
 weekly_player_points
 
 ```
 
 
-```{r random forest}
+```{r check}
+player_points_by_week <- player_points_by_week %>%
+  select(-posteam)
 
-columns_to_exclude <- c("player_id", "posteam", "own_coach")
 
-player_points_by_week_rf <- player_points_by_week[, !(names(player_points_by_week) %in% columns_to_exclude)]
-
-# Set a random seed for reproducibility
-set.seed(42)
-
-# Create a random sample of row indices for the test set
-test_indices <- sample(1:nrow(player_points_by_week_rf), nrow(player_points_by_week_rf) * 0.3)
-
-# Split the data into training and testing sets
-train_data <- player_points_by_week_rf[-test_indices, ]
-test_data <- player_points_by_week_rf[test_indices, ]
-
-# Create a random forest model
-rf_model <- randomForest(points ~ ., data = train_data, ntree = 500, mtry = 4)
-
-predictions <- predict(rf_model, newdata = test_data)
+player_points_by_week
 
 ```
 
 
-```{r model}
-
-summary(rf_model)
-
-# Use the randomForest::importance function to compute variable importance
-importance_scores <- randomForest::importance(rf_model)
-
-# View the variable importance scores
-print(importance_scores)
-
-# Confusion matrix
-conf_matrix <- table(Actual = test_data$points, Predicted = predictions)
-
-# Accuracy
-accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
-
-# Sensitivity (True Positive Rate)
-sensitivity <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
-
-# Specificity (True Negative Rate)
-specificity <- conf_matrix[1, 1] / sum(conf_matrix[1, ])
-
-# Print the results
-#print(conf_matrix)
-print(paste("Accuracy:", accuracy))
-print(paste("Sensitivity:", sensitivity))
-print(paste("Specificity:", specificity))
-
-
-```
 
 ```{r avg}
 
-weekly_player_points <- weekly_player_points %>%
+weekly_player_points <- player_points_by_week %>%
   group_by(player_id) %>%
   mutate(average_points = mean(points))
 
@@ -852,14 +695,52 @@ varImpPlot(model_rf)
 
 
 ```
+```{r print}
 
-
-```{r xgboost}
-
-print(player_points_by_week)
+print(precision)
+print(recall)
+print(f1_score)
 ```
 
+```{r individual player vars}
 
+# Create an empty dataframe to store player-specific deviations
+player_deviations <- data.frame()
+
+# Get the unique player IDs from the original dataframe
+unique_player_ids <- unique(weekly_player_points$player_id)
+
+# Loop through each unique player ID
+for (player_id in unique_player_ids) {
+  # Filter the data for the current player
+  player_data <- weekly_player_points[weekly_player_points$player_id == player_id, ]
+  
+  # Calculate the player-specific average score
+  player_average <- mean(player_data$points)
+  
+  # Train a model for the current player
+  player_model <- glm(above_average ~ temperature + humidity + wind_speed + wind_direction_degrees, data = player_data, family = "binomial")
+  
+  # Make predictions for the player's test data
+  player_test_data <- player_data  # You can use a test dataset here
+  player_predictions <- predict(player_model, newdata = player_test_data, type = "response")
+  
+  # Calculate the deviation from the player's average score for the test data
+  player_test_data$deviation <- player_test_data$points - player_average
+  
+  # Add the player-specific deviations to the results dataframe
+  player_deviations <- rbind(player_deviations, player_test_data)
+}
+
+# Now, player_deviations contains the deviations for all unique player IDs
+
+```
+
+```{r devs}
+
+player_deviations
+
+```
 
 
 

@@ -1,0 +1,969 @@
+---
+title: "FantasyDefense"
+output: html_document
+date: "2023-11-03"
+---
+
+```{r install}
+
+install.packages("gsisdecoder")
+install.packages("nflfastR")
+install.packages("e1071")
+install.packages("Rtools")
+install.packages("Metrics")
+```
+
+```{r libraries}
+library(lubridate)
+library(forcats)
+library(hms)
+library(stringr)
+library(ggplot2)
+library(progress)
+library(nflfastR)
+library(caret)
+library(knitr)
+library(dplyr)
+library(randomForest)
+library(xgboost)
+library(tidyverse)
+library(Metrics)
+library(car)
+library(e1071)
+library(tidyr)
+library(rpart)
+library(glmnet)
+```
+
+```{r def}
+
+# Load play-by-play data
+nfl_data_2019 <- load_pbp(2019)
+nfl_data_2020 <- load_pbp(2020)
+nfl_data_2021 <- load_pbp(2021)
+
+nfl_data <- rbind(nfl_data_2019, nfl_data_2020, nfl_data_2021)
+```
+
+```{r df}
+
+# Initialize an empty dataframe to store defensive fantasy points
+defensive_fantasy_points <- data.frame()
+
+# Create a progress bar
+pb <- progress_bar$new(
+  format = "[:bar] :percent Elapsed: :elapsed Time remaining: :eta",
+  total = nrow(nfl_data)
+)
+
+# Suppress warnings for the entire block of code
+suppressWarnings({
+  for (i in 1:nrow(nfl_data)) {
+    play <- nfl_data[i, ]
+
+    # Define relevant columns for defensive plays
+    defensive_player_ids <- c(play$interception_player_id, play$fumble_recovery_player_id, play$lateral_interception_player_id)
+    defensive_player_names <- c(play$interception_player_name, play$fumble_recovery_player_name, play$lateral_interception_player_name)
+
+    # Skip the iteration if all defensive player IDs and names are NA
+    if (all(is.na(defensive_player_ids)) || all(is.na(defensive_player_names))) {
+      pb$tick()
+      next
+    }
+
+    # Iterate through each defensive player
+    for (j in seq_along(defensive_player_ids)) {
+      # Skip the iteration if both player ID and name are NA
+      if (is.na(defensive_player_ids[j]) && is.na(defensive_player_names[j])) {
+        next
+      }
+
+      # Initialize points for this play
+      points <- 0
+
+      # Check for interception
+      if (!is.na(defensive_player_ids[j])) {
+        points <- points + 4  # Assuming 4 points per interception
+      }
+
+      # Check for fumble recovery
+      if (!is.na(defensive_player_ids[j])) {
+        points <- points + 2  # Assuming 2 points per fumble recovery
+      }
+
+      # Check for sack
+      if (!is.na(play$sack) && play$sack > 0) {
+        points <- points + (2 * play$sack)  # Assuming 2 points per sack
+      }
+
+      # Check for safety
+      if (!is.na(play$safety) && play$safety > 0) {
+        points <- points + (2 * play$safety)  # Assuming 2 points per safety
+      }
+
+      # Check for tackle for loss
+      if (!is.na(play$tackled_for_loss) && play$tackled_for_loss > 0) {
+        points <- points + play$tackled_for_loss  # Assuming 1 point per tackle for loss
+      }
+
+      # Check for solo tackle
+      if (!is.na(play$solo_tackle) && play$solo_tackle > 0) {
+        points <- points + play$solo_tackle  # Assuming 1 point per solo tackle
+      }
+
+      # Check for blocked punt
+      if (!is.na(play$punt_blocked) && play$punt_blocked > 0) {
+        points <- points + 2  # Assuming 2 points per blocked punt
+      }
+
+      # Use defensive player's ID and name
+      player_id_column <- defensive_player_ids[j]
+      player_name_column <- defensive_player_names[j]
+
+      # Create a row for the defensive player
+      player_points <- data.frame(
+        game_id = play$game_id,
+        play_id = play$play_id,
+        player_id = player_id_column,
+        player_name = player_name_column,
+        posteam = play$posteam,
+        posteam_type = play$posteam_type,
+        points = points,
+        home_team = play$home_team,
+        away_team = play$away_team,
+        game_date = play$game_date,
+        time_of_day = play$time_of_day,
+        stadium = play$stadium,
+        weather = as.character(gsub("^(.*?) Temp:.*", "\\1", play$weather)),
+        temperature = as.numeric(gsub(".*Temp: ([0-9]+)° F.*", "\\1", play$weather)),
+        humidity = as.numeric(gsub(".*Humidity: ([0-9]+)%.*", "\\1", play$weather)),
+        wind_direction = as.character(gsub(".*Wind: ([A-Z]+).*", "\\1", play$weather)),
+        wind_speed = as.numeric(gsub(".*Wind: [A-Z]+ ([0-9]+) mph.*", "\\1", play$weather)),
+        location = play$location,
+        roof = play$roof,
+        surface = play$surface,
+        home_coach = play$home_coach,
+        away_coach = play$away_coach,
+        away_score = play$total_away_score,
+        home_score = play$total_home_score,
+        game_stadium = play$game_stadium
+      )
+
+      # Append player points to the defensive_fantasy_points dataframe
+      defensive_fantasy_points <- rbind(defensive_fantasy_points, player_points)
+    }
+
+    # Increment the progress bar
+    pb$tick()
+  }
+})
+
+# Close the progress bar
+#pb$close()
+```
+```{r save}
+
+# Assuming your data frame is named 'my_data_frame'
+write.csv(defensive_fantasy_points, file = "defensive_fantasy_points.csv", row.names = FALSE)
+
+```
+
+```{r readcsv}
+
+# If the csv has already been created and you don't want to wait an hour to run it haha
+defensive_fantasy_points <- read.csv("defensive_fantasy_points.csv")
+
+```
+
+```{r df size}
+
+
+num_rows <- nrow(defensive_fantasy_points)
+num_columns <- ncol(defensive_fantasy_points)
+
+cat("Number of rows:", num_rows, "\n")
+cat("Number of columns:", num_columns, "\n")
+
+
+```
+
+
+```{r confirmation}
+
+head(defensive_fantasy_points, 1000)
+
+duplicates <- defensive_fantasy_points[duplicated(defensive_fantasy_points$play_id), ]
+
+print(duplicates)
+
+if (any(duplicated(defensive_fantasy_points$play_id))) {
+  print("There are duplicates in the column.")
+} else {
+  print("No duplicates found in the column.")
+}
+
+```
+
+
+```{r totalfantasypoints}
+
+# Group by player_id and calculate the sum of points for each player
+player_totals <- defensive_fantasy_points %>%
+  group_by(player_id) %>%
+  summarise(total_points = sum(points))
+
+# Print the result
+print(player_totals)
+
+# Create a histogram of total points
+ggplot(player_totals, aes(x = total_points)) +
+  geom_histogram(binwidth = 5, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Total Fantasy Points Distribution by Player",
+       x = "Total Fantasy Points",
+       y = "Frequency")
+
+unique_values <- unique(defensive_fantasy_points["weather"])
+print(unique_values)
+
+```
+
+
+```{r player stats}
+
+defensive_fantasy_points_trial <- defensive_fantasy_points %>%
+  mutate(player_id = as.numeric(gsub("[^0-9]", "", player_id)))
+
+# Get unique teams
+unique_teams <- sort(unique(c(defensive_fantasy_points$home_team, defensive_fantasy_points$away_team)))
+
+# Create a binary encoding key for each unique team
+encoding_key <- data.frame(
+  team = unique_teams,
+  encoding = 1:length(unique_teams) - 1
+)
+
+# Merge the encoding key with the nflfastr data frame
+defensive_fantasy_points_trial <- defensive_fantasy_points %>%
+  left_join(encoding_key, by = c("home_team" = "team")) %>%
+  rename(home_team_encoded = encoding) %>%
+  left_join(encoding_key, by = c("away_team" = "team")) %>%
+  rename(away_team_encoded = encoding)
+
+# Fill any NA values with 0
+#defensive_fantasy_points_trial[is.na(defensive_fantasy_points)] <- 0
+
+# Convert game_date to Date format
+defensive_fantasy_points_trial <- defensive_fantasy_points %>%
+  mutate(game_date = ymd(game_date))
+
+# Function to clean and convert time_of_day
+clean_and_convert_time <- function(x) {
+  ifelse(is.na(x), NA, as.hms(ifelse(x == "h:mm:ss", "00:00:00", as.character(x))))
+}
+
+# Apply the cleaning and conversion to the time_of_day column
+defensive_fantasy_points_trial <- defensive_fantasy_points%>%
+  mutate(time_of_day = clean_and_convert_time(time_of_day))
+
+
+unique_values <- unique(defensive_fantasy_points["weather"])
+
+
+# Define a custom function to map weather values to their corresponding categories
+map_weather <- function(weather) {
+  weather <- tolower(weather)
+  if (weather %in% tolower(c("hazy", "mostly cloudy", "cloudy", "cloudy and windy", "overcast", "foggy", "overcast and brisk", "cloudy and unseasonably warm"))) {
+    return("cloudy")
+  } else if (weather %in% tolower(c("controlled climate", "n/a (indoors)", "n/a", "indoors", "indoor"))) {
+    return("indoors")
+  } else if (weather %in% tolower(c("partly cloudy", "party cloudy", "partly coudy", "partly cloundy", "partly cloudy and mild", "cloudy and cool", "partly cloudy/windy", "	partly coudy", "mid 60s and partly cloudy", "scattered clouds", "hazy skies", "partly cloudy & windy", "partly cloudly", "partly cloudy/windy"))) {
+    return("partly cloudy")
+  } else if (weather %in% tolower(c(
+    "rain", "light rain", "rain and wind", "raining", "freezing rain", "light rain", "cloudy, rain", "rainy", "cloudy with showers", "cloudy, light rain", "light rain, fog and mist", "cloudy, rainy", "showers", "cloudy, rain"
+  ))) {
+    return("rainy")
+  } else if (weather %in% tolower(c("snow", "cloudy with snow flurries", "light snow/fog", "cloudy with snow flurries", "snow shower"))) {
+    return("snowy")
+  } else {
+    return("clear")
+  }
+}
+
+# Apply the custom mapping function to create the "weather_category" column
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(weather_category = sapply(tolower(weather), map_weather))
+
+
+# Define the values to replace with NA
+values_to_replace_with_na <- c(
+  "Temp: ° F, Wind: mph",
+  "Temp: 66° F, Humidity: 79%, Wind: mph",
+  "Temp: 69° F, Humidity: 70%, Wind: mph",
+  "Temp: 68° F, Humidity: 70%, Wind: mph",
+  "Temp: 52° F, Humidity: 54%, Wind: mph",
+  "Controlled Climate Temp: 68° F, Humidity: 70%, Wind: mph",
+  "Temp: Humidity: Wind: mph",
+  "N/A (Indoors) Temp: ° F, Wind: mph",
+  "N/A Temp: ° F, Wind: mph",
+  "Temp: ° F, Wind: mph",
+  "N/A Indoors Temp: ° F, Wind: mph",
+  "Temp: 66° F, Humidity: 79%, Wind: mph",
+  "Temp: 69° F, Humidity: 70%, Wind: mph",
+  "sUNNY Temp: 65° F, Humidity: 63%, Wind: mph",
+  "Clear Temp: 79° F, Humidity: 20%, Wind: mph",
+  "Temp: 52° F, Humidity: 54%, Wind: mph",
+  "Cloudy Temp: 62° F, Humidity: 47%, Wind: 0 mph",
+  "Controlled Climate Temp: 68° F, Humidity: 70%, Wind: mph",
+  "N/A (Indoors) Temp: Humidity: Wind:",
+  "Clear Temp: 71° F, Humidity: 44%, Wind: 5 mph",
+  "Sunny Temp: 64° F, Humidity: 39%, Wind: 5 mph",
+  "Temp: 70° F, Humidity: 57%, Wind: 5 mph",
+  "Sunny Temp: 99° F, Humidity: Wind:",
+  "n/a Temp: Humidity: Wind: mph",
+  "N/A Temp: Humidity: Wind: mph",
+  "N/A (Indoors) Temp: Humidity: Wind: mph",
+  "Indoors Temp: 72° F, Humidity: Wind: 0 MPH mph",
+  "Controlled Climate Temp: 68° F, Humidity: 78%, Wind: mph",
+  "Temp: Humidity: Wind: mph",
+  "Mostly Clear Temp: 72° F, Humidity: 18%, Wind: 0 mph",
+  "Fair Temp: 68° F, Humidity: 69%, Wind: none 0 mph",
+  "Sunny Temp: 34° F, Humidity: 46%, Wind: 0 mph"
+)
+
+# Replace specified values with NA
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_na ~ NA_character_,
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "SSW"
+values_to_replace_with_s <- c(
+  "Temp: 79° F, Humidity: 87%, Wind: SSW 11 mph",
+  "Temp: 79° F, Humidity: 18%, Wind: SSW 2 mph"
+)
+
+# Replace specified values with "SSW"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_s ~ "SSW",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "WSW"
+values_to_replace_with_s <- c(
+  "Temp: 73° F, Humidity: 20%, Wind: West/Southwest 10 mph"
+)
+
+# Replace specified values with "WSW"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_s ~ "WSW",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "W"
+values_to_replace_with_w <- c(
+  "Temp: 71° F, Humidity: 87%, Wind: West 3 mph",
+  "Temp: 57° F, Humidity: 47%, Wind: WEST 6 mph",
+  "Temp: 49° F, Humidity: 44%, Wind: W 8 mph"
+)
+
+# Replace specified values with "W"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "W",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "N"
+values_to_replace_with_w <- c(
+  "Temp: 34° F, Humidity: 59%, Wind: North 6 mph",
+  "Temp: 71° F, Humidity: 61%, Wind: North 10 mph"
+)
+
+# Replace specified values with "N"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "N",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "S"
+values_to_replace_with_s <- c(
+  "Temp: 82° F, Humidity: 55%, Wind: s 15 mph",
+  "Temp: 88° F, Humidity: 43%, Wind: S 12 mph",
+  "Temp: 82° F, Humidity: 55%, Wind: s 15 mph",
+  "Mostly Cloudy Temp: 44° F, Humidity: 66%, Wind: s 9 mph",
+  "clear Temp: 81° F, Humidity: 35%, Wind: 20 S mph"
+)
+
+# Replace specified values with "S"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_s ~ "S",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "SW"
+values_to_replace_with_s <- c(
+  "Temp: 77° F, Humidity: 77%, Wind: SW 15mph mph",
+  "Sunny, 79 degrees. wind SW at 6 mph",
+  "Partly Cloudy, 45 degr. Wind SW at 10 mph",
+  "Sunny Temp: 103° F, Humidity: 7%, Wind: 16 SW mph"
+)
+
+# Replace specified values with "SW"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_s ~ "SW",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "ESE"
+values_to_replace_with_w <- c(
+  "Temp: 62° F, Humidity: 89%, Wind: ESE 7-12mph mph"
+)
+
+# Replace specified values with "ESE"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "ESE",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "ENE"
+values_to_replace_with_w <- c(
+  "Temp: 65° F, Humidity: 67%, Wind: ENE 7 mph",
+  "Temp: 83° F, Humidity: 56%, Wind: ENE 8 MPH mph"
+)
+
+# Replace specified values with "ENE"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "ENE",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "NNW"
+values_to_replace_with_w <- c(
+  "Cloudy, 38 degr. Wind NNW at 10 mph",
+  "Temp: 77° F, Humidity: 15%, Wind: NNW 1 mph",
+  "Temp: 82° F, Humidity: 48%, Wind: North, Northwest 6 mph"
+)
+
+# Replace specified values with "NNW"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "NNW",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "SSE"
+values_to_replace_with_w <- c(
+  "Temp: 74° F, Humidity: 91%, Wind: SSE 6mph mph",
+  "Temp: 90° F, Humidity: 25%, Wind: SSE 2 mph"
+)
+
+# Replace specified values with "SSE"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "SSE",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "SE"
+values_to_replace_with_w <- c(
+  "Temp: 29° F, Humidity: 82%, Wind: Southeast 12 mph",
+  "Temp: 84° F, Humidity: 32%, Wind: Southeast 7 mph"
+)
+
+# Replace specified values with "SE"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "SE",
+    TRUE ~ wind_direction
+  ))
+
+# Define the values to replace with "NW"
+values_to_replace_with_w <- c(
+  "Temp: 29° F, Humidity: 82%, Wind: Southeast 12 mph",
+  "Clear Temp: 60° F, Humidity: 32%, Wind: nw 4mph mph",
+  "Hazy skies Temp: 88° F, Humidity: 28%, Wind: nw 10 mph",
+  "scattered clouds Temp: 62° F, Humidity: 36%, Wind: nw 11 mph"
+)
+
+# Replace specified values with "NW"
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(wind_direction = case_when(
+    wind_direction %in% values_to_replace_with_w ~ "NW",
+    TRUE ~ wind_direction
+  ))
+
+# Create a data frame to map cardinal directions to degrees
+directions_degrees <- data.frame(
+  direction = c("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"),
+  degrees = c(0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5)
+)
+
+# Merge the degrees data frame with your original data
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  left_join(directions_degrees, by = c("wind_direction" = "direction")) %>%
+  mutate(wind_direction_degrees = coalesce(degrees, NA))
+
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>% select(-degrees)
+
+# Encode location
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(location_encoded = case_when(
+    location == "Home" ~ 1,
+    location == "Neutral" ~ 0
+  ))
+
+# Extract the week from the game_id using regular expressions
+defensive_fantasy_points_trial$week <- as.numeric(sub(".*_(\\d+)_.*", "\\1", defensive_fantasy_points_trial$game_id))
+
+
+# Replace NA values in the points column with 0
+defensive_fantasy_points_trial$points <- ifelse(is.na(defensive_fantasy_points_trial$points), 0, defensive_fantasy_points_trial$points)
+
+defensive_fantasy_points_trial <- defensive_fantasy_points_trial %>%
+  mutate(
+    own_score = ifelse(posteam_type == "home", home_score, away_score),
+    opp_score = ifelse(posteam_type == "home", away_score, home_score),
+    own_coach = ifelse(posteam_type == "home", home_coach, away_coach),
+    opp_coach = ifelse(posteam_type == "home", away_coach, home_coach)
+  )
+
+head(defensive_fantasy_points_trial,1000)
+```
+
+```{r save}
+
+# Assuming your data frame is named 'my_data_frame'
+write.csv(defensive_fantasy_points_trial, file = "defensive_fantasy_points_trial.csv", row.names = FALSE)
+
+```
+
+```{r readcsv}
+
+# If the csv has already been created and you don't want to wait an hour to run it haha
+defensive_fantasy_points_trial <- read.csv("defensive_fantasy_points_trial.csv")
+
+```
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+selected_columns <- c(
+  "game_id", "play_id", "player_id", "player_name", "points", "posteam", "posteam_type", "home_team", "away_team", "game_date", "time_of_day", "temperature", "humidity", "wind_speed", "own_score", "opp_score", "stadium", "weather_category", "wind_direction_degrees", "location", "roof", "surface", "own_coach", "opp_coach", "week", "location_encoded")
+
+subset_defensive_fantasy_points <- defensive_fantasy_points_trial[selected_columns]
+
+defensive_player_points_by_week <- subset_defensive_fantasy_points %>%
+  group_by(player_id, week, own_score, opp_score, temperature, humidity, wind_speed, stadium, posteam, weather_category, wind_direction_degrees, location_encoded, roof, surface, own_coach, opp_coach) %>%
+  summarise(points = sum(points))
+
+defensive_player_points_by_week
+
+```
+
+
+```{r impute}
+
+# Impute missing values for wind_direction_degrees with the mean
+mean_wind_direction_degrees <- mean(defensive_player_points_by_week$wind_direction_degrees, na.rm = TRUE)
+defensive_player_points_by_week$wind_direction_degrees[is.na(defensive_player_points_by_week$wind_direction_degrees)] <- mean_wind_direction_degrees
+
+# Impute missing values for humidity with the mean
+mean_humidity <- mean(defensive_player_points_by_week$humidity, na.rm = TRUE)
+defensive_player_points_by_week$humidity[is.na(defensive_player_points_by_week$humidity)] <- mean_humidity
+
+# Impute missing values for temperature with the mean
+mean_temperature <- mean(defensive_player_points_by_week$temperature, na.rm = TRUE)
+defensive_player_points_by_week$temperature[is.na(defensive_player_points_by_week$temperature)] <- mean_temperature
+
+defensive_player_points_by_week$wind_speed[is.na(defensive_player_points_by_week$wind_speed)] <- 0
+
+
+# Create binary columns for each stadium
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = stadium, values_from = stadium,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "")
+
+
+# Create binary columns for each weather type
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = weather_category, values_from = weather_category,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "")
+
+# Create binary columns for each roof type
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = roof, values_from = roof,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "")
+
+# Create binary columns for each surface type
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = surface, values_from = surface,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "")
+
+# Create binary columns for each opponent coach
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = opp_coach, values_from = opp_coach,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "op_")
+
+defensive_player_points_by_week <- defensive_player_points_by_week %>%
+  pivot_wider(names_from = own_coach, values_from = own_coach,
+               values_fn = function(x) as.numeric(!is.na(x)),
+               names_prefix = "own_")
+
+# Fill any NA values with 0
+defensive_player_points_by_week[is.na(defensive_player_points_by_week)] <- 0
+
+
+# Replace spaces with underscores in column names
+colnames(defensive_player_points_by_week) <- gsub("\\s+", "_", colnames(defensive_player_points_by_week))
+
+# Replace periods with underscores in column names
+colnames(defensive_player_points_by_week) <- gsub("\\.", "_", colnames(defensive_player_points_by_week))
+
+# Replace hyphens with underscores in column names
+colnames(defensive_player_points_by_week) <- gsub("-", "_", colnames(defensive_player_points_by_week))
+
+# Replace ampersands with underscores in column names
+colnames(defensive_player_points_by_week) <- gsub("&", "_", colnames(defensive_player_points_by_week))
+
+# Replace apostrophes with underscores in column names
+colnames(defensive_player_points_by_week) <- gsub("'", "_", colnames(defensive_player_points_by_week))
+
+print(defensive_player_points_by_week)
+```
+
+```{r save}
+
+# Assuming your data frame is named 'my_data_frame'
+write.csv(defensive_player_points_by_week, file = "defensive_player_points_by_week.csv", row.names = FALSE)
+
+```
+
+```{r readcsv}
+
+# If the csv has already been created and you don't want to wait an hour to run it haha
+defensive_player_points_by_week <- read.csv("defensive_player_points_by_week.csv")
+
+```
+
+```{r weekly}
+
+# Assuming the column to be removed is "column_name"
+defensive_player_points_by_week <- defensive_player_points_by_week[, !names(defensive_player_points_by_week) %in% c("posteam")]
+
+weekly_player_points <- defensive_player_points_by_week %>%
+  group_by(player_id) %>%
+  mutate(average_points = mean(points))
+
+# Calculate a binary target variable (1 for scoring more than average, 0 otherwise)
+weekly_player_points$above_average <- ifelse(weekly_player_points$points > weekly_player_points$average_points, 1, 0)
+
+weekly_player_points <- weekly_player_points %>%
+  group_by(player_id) %>%
+  mutate(average_points_num = (average_points-points))
+
+weekly_player_points
+```
+
+
+```{r data set prep}
+weekly_player_points <- weekly_player_points[, !names(weekly_player_points) %in% c("player_id", "above_average", "average_points", "NA.", "points")]
+
+weekly_player_points
+
+# Set a seed for reproducibility
+set.seed(123)
+
+# Split the data into training (80%) and testing (20%) sets
+index <- createDataPartition(weekly_player_points$average_points_num, p = 0.8, list = FALSE)
+train_data <- weekly_player_points[index, ]
+test_data <- weekly_player_points[-index, ]
+
+# Identify numeric columns (excluding the target variable)
+numeric_columns <- sapply(train_data, is.numeric)
+numeric_columns <- numeric_columns & names(numeric_columns) != "average_points_num"
+
+# Create a pre-processing model
+preprocess_model <- preProcess(train_data[numeric_columns], method = c("center", "scale"))
+
+# Apply the pre-processing to both training and testing sets
+train_data_scaled <- predict(preprocess_model, newdata = train_data)
+test_data_scaled <- predict(preprocess_model, newdata = test_data)
+
+```
+
+
+```{r corr}
+
+# Assuming your training data is named 'train_data'
+correlation_matrix <- cor(train_data_scaled, use = "pairwise.complete.obs")
+
+# Find pairs of highly correlated variables
+highly_correlated_pairs <- findCorrelation(correlation_matrix, cutoff = 0.8)
+
+# Print the highly correlated pairs
+print(highly_correlated_pairs)
+
+# Assuming your training data is named 'train_data'
+highly_correlated_vars <- colnames(train_data)[highly_correlated_pairs]
+
+# Print the names of highly correlated variables
+print(highly_correlated_vars)
+
+
+
+
+```
+```{r baseline}
+# Define the target variable in the training and testing sets
+y_train <- train_data$average_points_num
+y_test <- test_data$average_points_num
+
+# Baseline model: Predict the mean of the training target variable
+baseline_predictions <- rep(mean(y_train), length(y_test))
+
+# Calculate MAE and RMSE for the baseline model
+baseline_mae <- mean(abs(y_test - baseline_predictions))
+baseline_rmse <- sqrt(mean((y_test - baseline_predictions)^2))
+
+cat("Baseline MAE:", baseline_mae, "\n")
+cat("Baseline RMSE:", baseline_rmse, "\n")
+
+```
+
+```{r model}
+
+# Define the target variable in the training and testing sets
+y_train_scaled <- train_data_scaled$average_points_num
+y_test_scaled <- test_data_scaled$average_points_num
+
+# Linear Regression Model
+model_lm <- lm(average_points_num ~ ., data = train_data_scaled)
+
+# Random Forest Model
+model_rf <- randomForest(average_points_num ~ ., data = train_data_scaled, ntree = 100)
+
+# Make predictions on the test set for both models
+predictions_lm <- predict(model_lm, newdata = test_data_scaled)
+predictions_rf <- predict(model_rf, newdata = test_data_scaled)
+
+# Calculate MAE and RMSE for both models
+mae_lm <- mean(abs(y_test - predictions_lm))
+rmse_lm <- sqrt(mean((y_test - predictions_lm)^2))
+
+mae_rf <- mean(abs(y_test - predictions_rf))
+rmse_rf <- sqrt(mean((y_test - predictions_rf)^2))
+
+cat("Linear Regression Model:\n")
+cat("MAE:", mae_lm, "\n")
+cat("RMSE:", rmse_lm, "\n")
+
+cat("\nRandom Forest Model:\n")
+cat("MAE:", mae_rf, "\n")
+cat("RMSE:", rmse_rf, "\n")
+```
+
+```{r lasso}
+
+# Linear Regression Model with Lasso regularization
+model_lasso <- glmnet(as.matrix(train_data_scaled[, -which(names(train_data_scaled) == "average_points_num")]), y_train, alpha = 1)
+
+# Make predictions on the test set
+predictions_lasso <- predict(model_lasso, s = 0.01, newx = as.matrix(test_data_scaled[, -which(names(test_data_scaled) == "average_points_num")]))
+
+# Calculate MAE and RMSE for the Lasso model
+mae_lasso <- mean(abs(y_test - predictions_lasso))
+rmse_lasso <- sqrt(mean((y_test - predictions_lasso)^2))
+
+cat("Lasso Regression Model:\n")
+cat("MAE:", mae_lasso, "\n")
+cat("RMSE:", rmse_lasso, "\n")
+
+```
+```{r modelss}
+
+# Train a ridge regression model
+ridge_model <- glmnet(as.matrix(train_data_scaled), y_train, alpha = 0)
+
+# Make predictions on the test set
+ridge_predictions <- predict(ridge_model, newx = as.matrix(test_data_scaled))
+
+# Calculate MAE and RMSE for the ridge model
+ridge_mae <- mean(abs(y_test - ridge_predictions))
+ridge_rmse <- sqrt(mean((y_test - ridge_predictions)^2))
+
+cat("Ridge Regression Model:\n")
+cat("MAE:", ridge_mae, "\n")
+cat("RMSE:", ridge_rmse, "\n")
+
+# Train an elastic net regression model
+elastic_net_model <- cv.glmnet(as.matrix(train_data_scaled), y_train, alpha = 0.5)
+
+# Make predictions on the test set
+elastic_net_predictions <- predict(elastic_net_model, newx = as.matrix(test_data_scaled))
+
+# Calculate MAE and RMSE for the elastic net model
+elastic_net_mae <- mean(abs(y_test - elastic_net_predictions))
+elastic_net_rmse <- sqrt(mean((y_test - elastic_net_predictions)^2))
+
+cat("Elastic Net Regression Model:\n")
+cat("MAE:", elastic_net_mae, "\n")
+cat("RMSE:", elastic_net_rmse, "\n")
+
+# Train an SVR model
+svr_model <- svm(average_points_num ~ ., data = train_data_scaled)
+
+# Make predictions on the test set
+svr_predictions <- predict(svr_model, newdata = test_data_scaled)
+
+# Calculate MAE and RMSE for the SVR model
+svr_mae <- mean(abs(y_test - svr_predictions))
+svr_rmse <- sqrt(mean((y_test - svr_predictions)^2))
+
+cat("Support Vector Regression (SVR) Model:\n")
+cat("MAE:", svr_mae, "\n")
+cat("RMSE:", svr_rmse, "\n")
+
+# Train a decision tree model
+
+decision_tree_model <- rpart(average_points_num ~ ., data = train_data_scaled)
+
+# Make predictions on the test set
+decision_tree_predictions <- predict(decision_tree_model, newdata = test_data_scaled)
+
+# Calculate MAE and RMSE for the decision tree model
+decision_tree_mae <- mean(abs(y_test - decision_tree_predictions))
+decision_tree_rmse <- sqrt(mean((y_test - decision_tree_predictions)^2))
+
+cat("Decision Tree Model:\n")
+cat("MAE:", decision_tree_mae, "\n")
+cat("RMSE:", decision_tree_rmse, "\n")
+
+```
+```{r lambda}
+
+# Train Elastic Net Regression model with different alpha values
+alphas <- c(0, 0.2, 0.5, 0.8, 1)
+enet_models <- lapply(alphas, function(alpha) {
+  cv.glmnet(as.matrix(train_data_scaled), y_train, alpha = alpha)
+})
+
+# Find the best lambda for each alpha
+best_lambdas <- sapply(enet_models, function(model) model$lambda.min)
+
+# Evaluate each model on the test set
+for (i in seq_along(alphas)) {
+  alpha <- alphas[i]
+  enet_model <- enet_models[[i]]
+  best_lambda <- best_lambdas[i]
+
+  enet_predictions <- predict(enet_model, newx = as.matrix(test_data_scaled), s = best_lambda)
+  enet_mae <- mean(abs(y_test - enet_predictions))
+  enet_rmse <- sqrt(mean((y_test - enet_predictions)^2))
+
+  cat("Elastic Net Model (Alpha =", alpha, ") MAE:", enet_mae, "\n")
+  cat("Elastic Net Model (Alpha =", alpha, ") RMSE:", enet_rmse, "\n")
+}
+
+column_names <- names(train_data_scaled_enr)
+print(column_names)
+```
+
+```{r ENR}
+
+# Remove the target variable from the scaled dataset
+#train_data_scaled_enr <- train_data_scaled[, -which(names(train_data_scaled) == #"average_points_num")]
+#test_data_scaled_enr <- test_data_scaled[, -which(names(test_data_scaled) == "average_points_num")]
+
+# Train Elastic Net Regression model
+enet_model <- cv.glmnet(as.matrix(train_data_scaled), y_train, alpha = 1)  # alpha = 1 worked best
+
+# Display the optimal lambda value
+best_lambda <- enet_model$lambda.min
+cat("Optimal Lambda:", best_lambda, "\n")
+
+# Make predictions on the test set
+enet_predictions <- predict(enet_model, newx = as.matrix(test_data_scaled), s = best_lambda)
+
+# Calculate MAE and RMSE for the Elastic Net model
+enet_mae <- mean(abs(y_test - enet_predictions))
+enet_rmse <- sqrt(mean((y_test - enet_predictions)^2))
+
+cat("Elastic Net Model MAE:", enet_mae, "\n")
+cat("Elastic Net Model RMSE:", enet_rmse, "\n")
+
+
+# R-squared (R2) Score
+r2 <- 1 - sum((y_test - enet_predictions)^2) / sum((y_test - mean(y_test))^2)
+cat("R-squared (R2) Score:", r2, "\n")
+
+# Mean Percentage Error (MAPE)
+mape <- mean(abs((y_test - enet_predictions) / y_test)) * 100
+cat("Mean Percentage Error (MAPE):", mape, "%\n")
+
+# Median Absolute Error (MedAE)
+medae <- median(abs(y_test - enet_predictions))
+cat("Median Absolute Error (MedAE):", medae, "\n")
+
+```
+```{r features}
+
+# Extract coefficients from the Elastic Net model
+coef_values <- coef(enet_model, s = best_lambda)
+
+# Create a data frame with feature names and coefficients
+feature_importance <- data.frame(
+  Feature = rownames(coef_values),
+  Coefficient = coef_values[, 1]
+)
+
+# Order the data frame by absolute coefficient values in descending order
+feature_importance <- feature_importance[order(abs(feature_importance$Coefficient), decreasing = TRUE), ]
+
+# Print the feature importance data frame
+print(feature_importance)
+
+
+
+
+
+```
+
+```{r resid}
+
+# Calculate residuals
+residuals <- y_test - enet_predictions
+
+# Plot residuals
+plot(residuals, main = "Residuals Plot", xlab = "Index", ylab = "Residuals")
+
+# Access cross-validated results
+cv_results <- enet_model$cvm
+
+# Display cross-validated results
+print(cv_results)
+
+# Plot cross-validated results
+plot(cv_results, type = "b", xlab = "Index", ylab = "Mean Squared Error", main = "Cross-Validated Mean Squared Error")
+
+
+```
