@@ -83,37 +83,37 @@ suppressWarnings({
 
       # Check for interception
       if (!is.na(defensive_player_ids[j])) {
-        points <- points + 4  # Assuming 4 points per interception
+        points <- points + 4  # 4 points per interception
       }
 
       # Check for fumble recovery
       if (!is.na(defensive_player_ids[j])) {
-        points <- points + 2  # Assuming 2 points per fumble recovery
+        points <- points + 2  # 2 points per fumble recovery
       }
 
       # Check for sack
       if (!is.na(play$sack) && play$sack > 0) {
-        points <- points + (2 * play$sack)  # Assuming 2 points per sack
+        points <- points + (2 * play$sack)  # 2 points per sack
       }
 
       # Check for safety
       if (!is.na(play$safety) && play$safety > 0) {
-        points <- points + (2 * play$safety)  # Assuming 2 points per safety
+        points <- points + (2 * play$safety)  # 2 points per safety
       }
 
       # Check for tackle for loss
       if (!is.na(play$tackled_for_loss) && play$tackled_for_loss > 0) {
-        points <- points + play$tackled_for_loss  # Assuming 1 point per tackle for loss
+        points <- points + play$tackled_for_loss  # 1 point per tackle for loss
       }
 
       # Check for solo tackle
       if (!is.na(play$solo_tackle) && play$solo_tackle > 0) {
-        points <- points + play$solo_tackle  # Assuming 1 point per solo tackle
+        points <- points + play$solo_tackle  # 1 point per solo tackle
       }
 
       # Check for blocked punt
       if (!is.na(play$punt_blocked) && play$punt_blocked > 0) {
-        points <- points + 2  # Assuming 2 points per blocked punt
+        points <- points + 2  # 2 points per blocked punt
       }
 
       # Use defensive player's ID and name
@@ -163,7 +163,7 @@ suppressWarnings({
 ```
 ```{r save}
 
-# Assuming your data frame is named 'my_data_frame'
+# save
 write.csv(defensive_fantasy_points, file = "defensive_fantasy_points.csv", row.names = FALSE)
 
 ```
@@ -215,12 +215,6 @@ player_totals <- defensive_fantasy_points %>%
 # Print the result
 print(player_totals)
 
-# Create a histogram of total points
-ggplot(player_totals, aes(x = total_points)) +
-  geom_histogram(binwidth = 5, fill = "blue", color = "black", alpha = 0.7) +
-  labs(title = "Total Fantasy Points Distribution by Player",
-       x = "Total Fantasy Points",
-       y = "Frequency")
 
 unique_values <- unique(defensive_fantasy_points["weather"])
 print(unique_values)
@@ -540,7 +534,7 @@ head(defensive_fantasy_points_trial,1000)
 
 ```{r save}
 
-# Assuming your data frame is named 'my_data_frame'
+# save
 write.csv(defensive_fantasy_points_trial, file = "defensive_fantasy_points_trial.csv", row.names = FALSE)
 
 ```
@@ -554,11 +548,6 @@ defensive_fantasy_points_trial <- read.csv("defensive_fantasy_points_trial.csv")
 
 
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r cars}
 
@@ -653,7 +642,7 @@ print(defensive_player_points_by_week)
 
 ```{r save}
 
-# Assuming your data frame is named 'my_data_frame'
+# save
 write.csv(defensive_player_points_by_week, file = "defensive_player_points_by_week.csv", row.names = FALSE)
 
 ```
@@ -667,7 +656,7 @@ defensive_player_points_by_week <- read.csv("defensive_player_points_by_week.csv
 
 ```{r weekly}
 
-# Assuming the column to be removed is "column_name"
+# Remove posteam column
 defensive_player_points_by_week <- defensive_player_points_by_week[, !names(defensive_player_points_by_week) %in% c("posteam")]
 
 weekly_player_points <- defensive_player_points_by_week %>%
@@ -714,7 +703,7 @@ test_data_scaled <- predict(preprocess_model, newdata = test_data)
 
 ```{r corr}
 
-# Assuming your training data is named 'train_data'
+# Correlation Matrix
 correlation_matrix <- cor(train_data_scaled, use = "pairwise.complete.obs")
 
 # Find pairs of highly correlated variables
@@ -723,7 +712,6 @@ highly_correlated_pairs <- findCorrelation(correlation_matrix, cutoff = 0.8)
 # Print the highly correlated pairs
 print(highly_correlated_pairs)
 
-# Assuming your training data is named 'train_data'
 highly_correlated_vars <- colnames(train_data)[highly_correlated_pairs]
 
 # Print the names of highly correlated variables
@@ -816,7 +804,7 @@ cat("MAE:", ridge_mae, "\n")
 cat("RMSE:", ridge_rmse, "\n")
 
 # Train an elastic net regression model
-elastic_net_model <- cv.glmnet(as.matrix(train_data_scaled), y_train, alpha = 0.5)
+elastic_net_model <- cv.glmnet(as.matrix(train_data_scaled), y_train, alpha = 1)
 
 # Make predictions on the test set
 elastic_net_predictions <- predict(elastic_net_model, newx = as.matrix(test_data_scaled))
@@ -884,8 +872,6 @@ for (i in seq_along(alphas)) {
   cat("Elastic Net Model (Alpha =", alpha, ") RMSE:", enet_rmse, "\n")
 }
 
-column_names <- names(train_data_scaled_enr)
-print(column_names)
 ```
 
 ```{r ENR}
@@ -927,22 +913,22 @@ cat("Median Absolute Error (MedAE):", medae, "\n")
 ```
 ```{r features}
 
-# Extract coefficients from the Elastic Net model
-coef_values <- coef(enet_model, s = best_lambda)
+# ENet model
+
+# Extract coefficients from the Elastic Net model using the optimal lambda
+coef_values <- as.matrix(coef(enet_model, s = best_lambda))
 
 # Create a data frame with feature names and coefficients
 feature_importance <- data.frame(
   Feature = rownames(coef_values),
-  Coefficient = coef_values[, 1]
+  Coefficient = coef_values
 )
 
-# Order the data frame by absolute coefficient values in descending order
+# Order the features by absolute coefficient value to identify the most important ones
 feature_importance <- feature_importance[order(abs(feature_importance$Coefficient), decreasing = TRUE), ]
 
-# Print the feature importance data frame
+# Print the feature importance
 print(feature_importance)
-
-
 
 
 
