@@ -1,2 +1,0 @@
-source("master.R")
-runApp()
