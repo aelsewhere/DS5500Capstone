@@ -1120,7 +1120,6 @@ te_extra <- te_extra %>%
   mutate(row_count = n())
 
 set.seed(10)
-
 # Model train/test
 qb_model <- qb_extra %>%
   dplyr::select(
@@ -1170,8 +1169,6 @@ qb_extra$pred <- predict(qb_lmer, new_data = qb_extra, allow.new.levels = TRUE)
 qb_test <- qb_test %>%
   group_by(player_name) %>%
   mutate(row_count = n())
-qb_top <- qb_extra %>%
-  filter(row_count > 10)
 
 
 wr_model <- wr_extra %>%
