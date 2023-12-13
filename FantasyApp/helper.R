@@ -1,84 +1,22 @@
-# libraries
-libs <- c(
-  "dplyr", "zoo", "rsample", "lme4", "tidyverse",
-  "nflfastR", "randomForest", "glmnet", "ggplot2",
-  "lmerTest", "caret", "ggrepel", "nflplotR", "stringr",
-  "nflreadr", "tictoc", "leaps", "tidymodels", "plotly",
-  "gridlayout"
-)
-invisible(lapply(libs, library, character.only = TRUE))
+# libraries - ONLY FOR DEBUGGING HELPER FILE: DO NOT
+# USE LIBRARIES OTHERWISE
+#libs <- c(
+#  "dplyr", "zoo", "rsample", "lme4", "tidyverse",
+#  "nflfastR", "randomForest", "glmnet", "ggplot2",
+#  "lmerTest", "caret", "ggrepel", "nflplotR", "stringr",
+#  "nflreadr", "tictoc", "leaps", "tidymodels", "plotly",
+#  "gridlayout"
+#)
+#invisible(lapply(libs, library, character.only = TRUE))
 
-# mark mandatory form fields
-mand_roster <- c(
-  "myRosterQB",
-  "myRosterRB1",
-  "myRosterWR1",
-  "myRosterTE",
-  "myRosterK"
-)
-
-# marking with a red asterisk
-star_mand <- function(label) {
-  tagList(
-    label,
-    span("*", class = "mandatory_star")
-  )
-}
-appCSS <- ".mandatory_star { color: red; }"
-
-# all roster positions
-full_roster <- c(
-  "myRosterQB",
-  "myRosterRB1",
-  "myRosterRB2",
-  "myRosterWR1",
-  "myRosterWR2",
-  "myRosterTE",
-  "myRosterFlex",
-  "myRosterDST",
-  "myRosterK"
-)
-
-# time - used in save
-epoch_time <- function() {
-  as.integer(Sys.time())
-}
-human_time <- function() format(Sys.time(), "%Y%m%d-%H%M%OS")
-
-# user saved roster
-saved_roster <- "responses"
-
-# define roster candidates from nflreadr, by position
+# ----------------------------------------------
+# LOAD/CREATE DATA SOURCES
+# ----------------------------------------------
 nfl_roster <- nflreadr::load_rosters()
-qb_choices <- nfl_roster[nfl_roster$position == 'QB', "full_name"]
-rb_choices <- nfl_roster[nfl_roster$position == 'RB', "full_name"]
-wr_choices <- nfl_roster[nfl_roster$position == 'WR', "full_name"]
-te_choices <- nfl_roster[nfl_roster$position == 'TE', "full_name"]
-flex_choices <- nfl_roster[["full_name"]]
-dst_choices <- nfl_roster %>%
-  filter(position %in% c("LS", "DL", "P", "DB", "LB")) %>%
-  select(full_name)
-k_choices <- nfl_roster[nfl_roster$position == 'K', "full_name"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###########################################################################
-###########################################################################
-########## WEEKLY STAT PREDICTOR ##########################################
-###########################################################################
-###########################################################################
-
+pbp_2020 <- nflreadr::load_pbp(2020)
+player_stats <- nflreadr::load_player_stats(2020:2023)
+player_stats_2020 <- nflreadr::load_player_stats(2020)
+sched <- nflreadr::load_schedules(2023)
 # load stats from nflreadr: train 2020-2022, test 2023
 pbp_stats <- nflreadr::load_player_stats(2020:2022)
 def_stats <- nflreadr::load_pbp(2020:2022)
@@ -88,33 +26,58 @@ duplicates <- duplicated(pbp_stats$player_id)
 unique_stats <- pbp_stats[!duplicates, ]
 
 # Define variable player_short to access tables without full names
+# i got to come back to this after the final full database is assembled
+# this is trash
 build_player_mapping <- function() {
   name_mapping <- data.frame(
     Full_name = unique_stats[["player_display_name"]],
     Short_name = unique_stats[["player_name"]]
   )
-  #return(name_mapping)
+  return(name_mapping)
 }
+positions <- c("QB", "RB", "WR", "TE")
 
 
-# defensive stats allowed - teams
+# ----------------------------------------------
+# ROSTER DATA HANDLING
+# ----------------------------------------------
+full_roster <- c("myRosterQB", "myRosterRB1",
+  "myRosterRB2", "myRosterWR1", "myRosterWR2",
+  "myRosterTE", "myRosterFlex", "myRosterDST",
+  "myRosterK"
+)
+# mark mandatory form fields
+mand_roster <- c("myRosterQB", "myRosterRB1",
+  "myRosterWR1", "myRosterTE", "myRosterK"
+)
+# marking with a red asterisk
+star_mand <- function(label) { tagList(
+  label, span("*", class = "mandatory_star")
+)}
+appCSS <- ".mandatory_star { color: red; }"
+# time - used in save
+epoch_time <- function() { as.integer(Sys.time()) }
+human_time <- function() format(Sys.time(), "%Y%m%d-%H%M%OS")
+# user saved roster
+saved_roster <- "responses"
+qb_choices <- nfl_roster[nfl_roster$position == 'QB', full_name]
+rb_choices <- nfl_roster[nfl_roster$position == 'RB', full_name]
+wr_choices <- nfl_roster[nfl_roster$position == 'WR', full_name]
+te_choices <- nfl_roster[nfl_roster$position == 'TE', full_name]
+flex_choices <- nfl_roster[["full_name"]] # this is a lot to load for a dropdown
+dst_choices <- unique(nfl_roster[["team"]])
+k_choices <- nfl_roster[nfl_roster$position == 'K', full_name]
+
+
+# ----------------------------------------------
+# BUILDING WEEKLY STAT PREDICTOR FILES
+# ----------------------------------------------
 # aggregating defensive statistics
 def_stats_allowed <- def_stats %>%
   filter(!is.na(posteam)) %>%
-  select(
-    game_id,
-    season,
-    week,
-    posteam,
-    defteam,
-    passing_yards,
-    rushing_yards,
-    success,
-    rush_touchdown,
-    pass_touchdown,
-    interception,
-    fumble_lost,
-    sack
+  select(game_id, season, week, posteam, defteam, passing_yards,
+    rushing_yards, success, rush_touchdown, pass_touchdown,
+    interception, fumble_lost, sack
   ) %>%
   replace(is.na(.), 0) %>%
   group_by(game_id, season, week, posteam, defteam) %>%
@@ -131,19 +94,9 @@ def_stats_allowed <- def_stats %>%
   ungroup()
 def_stats_allowed_test <- def_stats_test %>%
   filter(!is.na(posteam)) %>%
-  select(
-    game_id,
-    season,
-    week, posteam,
-    defteam,
-    passing_yards,
-    rushing_yards,
-    success,
-    rush_touchdown,
-    pass_touchdown,
-    interception,
-    fumble_lost,
-    sack
+  select(game_id, season, week, posteam, defteam, passing_yards,
+    rushing_yards, success, rush_touchdown, pass_touchdown,
+    interception, fumble_lost, sack
   ) %>%
   replace(is.na(.), 0) %>%
   group_by(game_id, season, week, posteam, defteam) %>%
@@ -154,11 +107,9 @@ def_stats_allowed_test <- def_stats_test %>%
     total_passing_yards_allowed = sum(passing_yards),
     total_pass_tds_allowed = sum(pass_touchdown),
     interceptions_forced = sum(interception),
-    fumbles_forced = sum(fumble_lost),
-    sacks_forced = sum(sack)
+    fumbles_forced = sum(fumble_lost), sacks_forced = sum(sack)
   ) %>%
   ungroup()
-
 # individual stats based on play-by-play data
 weekly_stats <- pbp_stats %>%
   select(
@@ -167,60 +118,33 @@ weekly_stats <- pbp_stats %>%
   replace(is.na(.), 0) %>%
   mutate(
     fan_points_half_ppr = (
-      (.04 * passing_yards) +
-        (4 * passing_tds) +
-        (-2 * interceptions) +
-        (2 * passing_2pt_conversions) +
-        (.1 * rushing_yards) +
-        (6 * rushing_tds) +
-        (-2 * rushing_fumbles_lost) +
-        (2 * rushing_2pt_conversions) +
-        (.1 * receiving_yards) +
-        (.5 * receptions) +
-        (6 * receiving_tds) +
-        (-2 * receiving_fumbles_lost) +
-        (2 * receiving_2pt_conversions) +
+      (.04 * passing_yards) + (4 * passing_tds) + (-2 * interceptions) +
+        (2 * passing_2pt_conversions) + (.1 * rushing_yards) + (6 * rushing_tds) +
+        (-2 * rushing_fumbles_lost) + (2 * rushing_2pt_conversions) +
+        (.1 * receiving_yards) + (.5 * receptions) + (6 * receiving_tds) +
+        (-2 * receiving_fumbles_lost) + (2 * receiving_2pt_conversions) +
         (-2 * sack_fumbles_lost)
     ),
     posteam = recent_team
   ) %>%
   select(-c(recent_team))
 weekly_stats_test <- pbp_stats_test %>%
-  select(
-    -c(
-      headshot_url,
-      pacr,
-      dakota,
-      racr,
-      opponent_team,
-      position_group
-    )
-  ) %>%
+  select(-c(
+    headshot_url, pacr, dakota, racr, opponent_team, position_group
+  )) %>%
   replace(is.na(.), 0) %>%
   mutate(
     fan_points_half_ppr = (
-      (.04 * passing_yards) +
-        (4 * passing_tds) +
-        (-2 * interceptions) +
-        (2 * passing_2pt_conversions) +
-        (.1 * rushing_yards) +
-        (6 * rushing_tds) +
-        (-2 * rushing_fumbles_lost) +
-        (2 * rushing_2pt_conversions) +
-        (.1 * receiving_yards) +
-        (.5 * receptions) +
-        (6 * receiving_tds) +
-        (-2 * receiving_fumbles_lost) +
-        (2 * receiving_2pt_conversions) +
-        (-2 * sack_fumbles_lost)
+      (.04 * passing_yards) + (4 * passing_tds) + (-2 * interceptions) +
+        (2 * passing_2pt_conversions) + (.1 * rushing_yards) +
+        (6 * rushing_tds) + (-2 * rushing_fumbles_lost) +
+        (2 * rushing_2pt_conversions) + (.1 * receiving_yards) +
+        (.5 * receptions) + (6 * receiving_tds) + (-2 * receiving_fumbles_lost) +
+        (2 * receiving_2pt_conversions) + (-2 * sack_fumbles_lost)
     ),
     posteam = recent_team
   ) %>%
   select(-c(recent_team))
-
-# seperate individual stats by position
-positions <- c("QB", "RB", "WR", "TE")
-
 merged_stats <- left_join(
   weekly_stats,
   def_stats_allowed,
@@ -235,71 +159,20 @@ merged_stats_test <- left_join(
 ) %>%
   filter(position %in% positions) %>%
   select(-c(player_display_name, season, season_type, wopr, special_teams_tds))
-
+sched <- sched %>%
+  filter(week == def_stats_allowed_test$week) %>%
+  select(game_id, week, home_team, away_team)
+# stat predictor - quarterback
 weekly_stats_test_qb <- weekly_stats_test %>%
   filter(position == "QB") %>%
   mutate(player_team = posteam) %>%
   mutate(max_week = max(week)) %>%
   group_by(player_id) %>%
   reframe(
-    player_name = player_name,
-    posteam = posteam,
-    player_team = player_team,
-    position = position,
-    week = max_week,
-    completions = mean(completions),
-    attempts = mean(attempts),
-    passing_yards = mean(passing_yards),
-    passing_tds = mean(passing_tds),
-    interceptions = mean(interceptions),
-    sacks = mean(sacks),
-    sack_yards = mean(sack_yards),
-    sack_fumbles = mean(sack_fumbles),
-    sack_fumbles_lost = mean(sack_fumbles_lost),
-    passing_air_yards = mean(passing_air_yards),
-    passing_yards_after_catch = mean(passing_yards_after_catch),
-    passing_first_downs = mean(passing_first_downs),
-    passing_epa = mean(passing_epa),
-    passing_2pt_conversions = mean(passing_2pt_conversions),
-    carries = mean(carries),
-    rushing_yards = mean(rushing_yards),
-    rushing_tds = mean(rushing_tds),
-    rushing_fumbles = mean(rushing_fumbles),
-    rushing_fumbles_lost = mean(rushing_fumbles_lost),
-    rushing_first_downs = mean(rushing_first_downs),
-    rushing_epa = mean(rushing_epa),
-    rushing_2pt_conversions = mean(rushing_2pt_conversions),
-    receptions = mean(receptions),
-    targets = mean(targets),
-    receiving_yards = mean(receiving_yards),
-    receiving_tds = mean(receiving_tds),
-    receiving_fumbles = mean(receiving_fumbles),
-    receiving_fumbles_lost = mean(receiving_fumbles_lost),
-    receiving_air_yards = mean(receiving_air_yards),
-    receiving_yards_after_catch = mean(receiving_yards_after_catch),
-    receiving_first_downs = mean(receiving_first_downs),
-    receiving_epa = mean(receiving_epa),
-    target_share = mean(target_share),
-    air_yards_share = mean(air_yards_share),
-    receiving_2pt_conversions = mean(receiving_2pt_conversions)
-  ) %>%
-  distinct()
-weekly_stats_test_rb <- weekly_stats_test %>%
-  filter(position == "RB") %>%
-  mutate(player_team = posteam) %>%
-  mutate(max_week = max(week)) %>%
-  group_by(player_id) %>%
-  reframe(
-    player_name = player_name,
-    posteam = posteam,
-    player_team = player_team,
-    position = position,
-    week = max_week,
-    completions = mean(completions),
-    attempts = mean(attempts),
-    passing_yards = mean(passing_yards),
-    passing_tds = mean(passing_tds),
-    interceptions = mean(interceptions),
+    player_name = player_name, posteam = posteam, player_team = player_team,
+    position = position, week = max_week, completions = mean(completions),
+    attempts = mean(attempts), passing_yards = mean(passing_yards),
+    passing_tds = mean(passing_tds), interceptions = mean(interceptions),
     sacks = mean(sacks), sack_yards = mean(sack_yards),
     sack_fumbles = mean(sack_fumbles),
     sack_fumbles_lost = mean(sack_fumbles_lost),
@@ -308,16 +181,13 @@ weekly_stats_test_rb <- weekly_stats_test %>%
     passing_first_downs = mean(passing_first_downs),
     passing_epa = mean(passing_epa),
     passing_2pt_conversions = mean(passing_2pt_conversions),
-    carries = mean(carries),
-    rushing_yards = mean(rushing_yards),
-    rushing_tds = mean(rushing_tds),
-    rushing_fumbles = mean(rushing_fumbles),
+    carries = mean(carries), rushing_yards = mean(rushing_yards),
+    rushing_tds = mean(rushing_tds), rushing_fumbles = mean(rushing_fumbles),
     rushing_fumbles_lost = mean(rushing_fumbles_lost),
     rushing_first_downs = mean(rushing_first_downs),
     rushing_epa = mean(rushing_epa),
     rushing_2pt_conversions = mean(rushing_2pt_conversions),
-    receptions = mean(receptions),
-    targets = mean(targets),
+    receptions = mean(receptions), targets = mean(targets),
     receiving_yards = mean(receiving_yards),
     receiving_tds = mean(receiving_tds),
     receiving_fumbles = mean(receiving_fumbles),
@@ -325,30 +195,61 @@ weekly_stats_test_rb <- weekly_stats_test %>%
     receiving_air_yards = mean(receiving_air_yards),
     receiving_yards_after_catch = mean(receiving_yards_after_catch),
     receiving_first_downs = mean(receiving_first_downs),
-    receiving_epa = mean(receiving_epa),
-    target_share = mean(target_share),
+    receiving_epa = mean(receiving_epa), target_share = mean(target_share),
     air_yards_share = mean(air_yards_share),
     receiving_2pt_conversions = mean(receiving_2pt_conversions)
   ) %>%
   distinct()
+# stat predictor - running backs
+weekly_stats_test_rb <- weekly_stats_test %>%
+  filter(position == "RB") %>%
+  mutate(player_team = posteam) %>%
+  mutate(max_week = max(week)) %>%
+  group_by(player_id) %>%
+  reframe(
+    player_name = player_name, posteam = posteam, player_team = player_team,
+    position = position, week = max_week, completions = mean(completions),
+    attempts = mean(attempts), passing_yards = mean(passing_yards),
+    passing_tds = mean(passing_tds), interceptions = mean(interceptions),
+    sacks = mean(sacks), sack_yards = mean(sack_yards),
+    sack_fumbles = mean(sack_fumbles),
+    sack_fumbles_lost = mean(sack_fumbles_lost),
+    passing_air_yards = mean(passing_air_yards),
+    passing_yards_after_catch = mean(passing_yards_after_catch),
+    passing_first_downs = mean(passing_first_downs),
+    passing_epa = mean(passing_epa),
+    passing_2pt_conversions = mean(passing_2pt_conversions),
+    carries = mean(carries), rushing_yards = mean(rushing_yards),
+    rushing_tds = mean(rushing_tds), rushing_fumbles = mean(rushing_fumbles),
+    rushing_fumbles_lost = mean(rushing_fumbles_lost),
+    rushing_first_downs = mean(rushing_first_downs),
+    rushing_epa = mean(rushing_epa),
+    rushing_2pt_conversions = mean(rushing_2pt_conversions),
+    receptions = mean(receptions), targets = mean(targets),
+    receiving_yards = mean(receiving_yards),
+    receiving_tds = mean(receiving_tds),
+    receiving_fumbles = mean(receiving_fumbles),
+    receiving_fumbles_lost = mean(receiving_fumbles_lost),
+    receiving_air_yards = mean(receiving_air_yards),
+    receiving_yards_after_catch = mean(receiving_yards_after_catch),
+    receiving_first_downs = mean(receiving_first_downs),
+    receiving_epa = mean(receiving_epa), target_share = mean(target_share),
+    air_yards_share = mean(air_yards_share),
+    receiving_2pt_conversions = mean(receiving_2pt_conversions)
+  ) %>%
+  distinct()
+# stat predictor - wide receivers
 weekly_stats_test_wr <- weekly_stats_test %>%
   filter(position == "WR") %>%
   mutate(player_team = posteam) %>%
   mutate(max_week = max(week)) %>%
   group_by(player_id) %>%
   reframe(
-    player_name = player_name,
-    posteam = posteam,
-    player_team = player_team,
-    position = position,
-    week = max_week,
-    completions = mean(completions),
-    attempts = mean(attempts),
-    passing_yards = mean(passing_yards),
-    passing_tds = mean(passing_tds),
-    interceptions = mean(interceptions),
-    sacks = mean(sacks),
-    sack_yards = mean(sack_yards),
+    player_name = player_name, posteam = posteam, player_team = player_team,
+    position = position, week = max_week, completions = mean(completions),
+    attempts = mean(attempts), passing_yards = mean(passing_yards),
+    passing_tds = mean(passing_tds), interceptions = mean(interceptions),
+    sacks = mean(sacks), sack_yards = mean(sack_yards),
     sack_fumbles = mean(sack_fumbles),
     sack_fumbles_lost = mean(sack_fumbles_lost),
     passing_air_yards = mean(passing_air_yards),
@@ -356,16 +257,13 @@ weekly_stats_test_wr <- weekly_stats_test %>%
     passing_first_downs = mean(passing_first_downs),
     passing_epa = mean(passing_epa),
     passing_2pt_conversions = mean(passing_2pt_conversions),
-    carries = mean(carries),
-    rushing_yards = mean(rushing_yards),
-    rushing_tds = mean(rushing_tds),
-    rushing_fumbles = mean(rushing_fumbles),
+    carries = mean(carries), rushing_yards = mean(rushing_yards),
+    rushing_tds = mean(rushing_tds), rushing_fumbles = mean(rushing_fumbles),
     rushing_fumbles_lost = mean(rushing_fumbles_lost),
     rushing_first_downs = mean(rushing_first_downs),
     rushing_epa = mean(rushing_epa),
     rushing_2pt_conversions = mean(rushing_2pt_conversions),
-    receptions = mean(receptions),
-    targets = mean(targets),
+    receptions = mean(receptions), targets = mean(targets),
     receiving_yards = mean(receiving_yards),
     receiving_tds = mean(receiving_tds),
     receiving_fumbles = mean(receiving_fumbles),
@@ -373,29 +271,23 @@ weekly_stats_test_wr <- weekly_stats_test %>%
     receiving_air_yards = mean(receiving_air_yards),
     receiving_yards_after_catch = mean(receiving_yards_after_catch),
     receiving_first_downs = mean(receiving_first_downs),
-    receiving_epa = mean(receiving_epa),
-    target_share = mean(target_share),
+    receiving_epa = mean(receiving_epa), target_share = mean(target_share),
     air_yards_share = mean(air_yards_share),
     receiving_2pt_conversions = mean(receiving_2pt_conversions)
   ) %>%
   distinct()
+# stat predictor - tight ends
 weekly_stats_test_te <- weekly_stats_test %>%
   filter(position == "TE") %>%
   mutate(player_team = posteam) %>%
   mutate(max_week = max(week)) %>%
   group_by(player_id) %>%
   reframe(
-    player_name = player_name,
-    posteam = posteam,
-    player_team = player_team,
-    position = position,
-    week = max_week,
-    completions = mean(completions), attempts = mean(attempts),
-    passing_yards = mean(passing_yards),
-    passing_tds = mean(passing_tds),
-    interceptions = mean(interceptions),
-    sacks = mean(sacks),
-    sack_yards = mean(sack_yards),
+    player_name = player_name, posteam = posteam, player_team = player_team,
+    position = position, week = max_week, completions = mean(completions),
+    attempts = mean(attempts), passing_yards = mean(passing_yards),
+    passing_tds = mean(passing_tds), interceptions = mean(interceptions),
+    sacks = mean(sacks), sack_yards = mean(sack_yards),
     sack_fumbles = mean(sack_fumbles),
     sack_fumbles_lost = mean(sack_fumbles_lost),
     passing_air_yards = mean(passing_air_yards),
@@ -403,16 +295,14 @@ weekly_stats_test_te <- weekly_stats_test %>%
     passing_first_downs = mean(passing_first_downs),
     passing_epa = mean(passing_epa),
     passing_2pt_conversions = mean(passing_2pt_conversions),
-    carries = mean(carries),
-    rushing_yards = mean(rushing_yards),
+    carries = mean(carries), rushing_yards = mean(rushing_yards),
     rushing_tds = mean(rushing_tds),
     rushing_fumbles = mean(rushing_fumbles),
     rushing_fumbles_lost = mean(rushing_fumbles_lost),
     rushing_first_downs = mean(rushing_first_downs),
     rushing_epa = mean(rushing_epa),
     rushing_2pt_conversions = mean(rushing_2pt_conversions),
-    receptions = mean(receptions),
-    targets = mean(targets),
+    receptions = mean(receptions), targets = mean(targets),
     receiving_yards = mean(receiving_yards),
     receiving_tds = mean(receiving_tds),
     receiving_fumbles = mean(receiving_fumbles),
@@ -420,12 +310,12 @@ weekly_stats_test_te <- weekly_stats_test %>%
     receiving_air_yards = mean(receiving_air_yards),
     receiving_yards_after_catch = mean(receiving_yards_after_catch),
     receiving_first_downs = mean(receiving_first_downs),
-    receiving_epa = mean(receiving_epa),
-    target_share = mean(target_share),
+    receiving_epa = mean(receiving_epa), target_share = mean(target_share),
     air_yards_share = mean(air_yards_share),
     receiving_2pt_conversions = mean(receiving_2pt_conversions)
   ) %>%
   distinct()
+# stat predictor - regrouping
 def_stats_allowed_test <- def_stats_allowed_test %>%
   mutate(max_week = max(week)) %>%
   group_by(defteam) %>%
@@ -441,172 +331,94 @@ def_stats_allowed_test <- def_stats_allowed_test %>%
     fumbles_forced = mean(fumbles_forced)
   ) %>%
   distinct()
-
-# loading team schedules
-sched <- nflreadr::load_schedules(2023)
 sched <- sched %>%
   filter(week == def_stats_allowed_test$week) %>%
   select(game_id, week, home_team, away_team)
-
-# add to weekly stats, joining on player's team as away team
 result_home_qb <- sched %>%
   left_join(weekly_stats_test_qb, by = c("home_team" = "posteam"))
 result_away_qb <- sched %>%
   left_join(weekly_stats_test_qb, by = c("away_team" = "posteam"))
 final_result_qb <- bind_rows(result_home_qb, result_away_qb) %>%
-  mutate(
-    posteam = ifelse(
-      player_team == home_team,
-      home_team,
-      ifelse(
-        player_team == away_team,
-        away_team,
-        NA
-      )
-    )
-  ) %>%
-  mutate(
-    defteam = ifelse(
-      player_team == home_team,
-      away_team,
-      ifelse(
-        player_team == away_team,
-        home_team,
-        NA
-      )
-    )
-  ) %>%
+  mutate(posteam = ifelse(
+    player_team == home_team,
+    home_team,
+    ifelse(player_team == away_team, away_team, NA)
+  )) %>%
+  mutate(defteam = ifelse(
+    player_team == home_team,
+    away_team,
+    ifelse(player_team == away_team, home_team, NA)
+  )) %>%
   select(-week.x, -week.y, -home_team, -away_team, -game_id)
 final_result_qb <- final_result_qb %>%
   left_join(def_stats_allowed_test, by = c("defteam" = "defteam"))
-
-###################################################################
 result_home_rb <- sched %>%
   left_join(weekly_stats_test_rb, by = c("home_team" = "posteam"))
 result_away_rb <- sched %>%
   left_join(weekly_stats_test_rb, by = c("away_team" = "posteam"))
 final_result_rb <- bind_rows(result_home_rb, result_away_rb) %>%
-  mutate(
-    posteam = ifelse(
-      player_team == home_team,
-      home_team,
-      ifelse(
-        player_team == away_team,
-        away_team,
-        NA
-      )
-    )
-  ) %>%
-  mutate(
-    defteam = ifelse(
-      player_team == home_team,
-      away_team,
-      ifelse(
-        player_team == away_team,
-        home_team,
-        NA
-      )
-    )
-  ) %>%
+  mutate(posteam = ifelse(
+    player_team == home_team,
+    home_team,
+    ifelse(player_team == away_team, away_team, NA)
+  )) %>%
+  mutate(defteam = ifelse(
+    player_team == home_team,
+    away_team,
+    ifelse(player_team == away_team, home_team, NA)
+  )) %>%
   select(-week.x, -week.y, -home_team, -away_team, -game_id)
 final_result_rb <- final_result_rb %>%
   left_join(def_stats_allowed_test, by = c("defteam" = "defteam"))
-
-###################################################################
 result_home_wr <- sched %>%
   left_join(weekly_stats_test_wr, by = c("home_team" = "posteam"))
 result_away_wr <- sched %>%
   left_join(weekly_stats_test_wr, by = c("away_team" = "posteam"))
 final_result_wr <- bind_rows(result_home_wr, result_away_wr) %>%
-  mutate(
-    posteam = ifelse(
-      player_team == home_team,
-      home_team,
-      ifelse(
-        player_team == away_team,
-        away_team,
-        NA
-      )
-    )
-  ) %>%
-  mutate(
-    defteam = ifelse(
-      player_team == home_team,
-      away_team,
-      ifelse(
-        player_team == away_team,
-        home_team,
-        NA
-      )
-    )
-  ) %>%
+  mutate(posteam = ifelse(
+    player_team == home_team,
+    home_team,
+    ifelse(player_team == away_team, away_team, NA)
+  )) %>%
+  mutate(defteam = ifelse(
+    player_team == home_team,
+    away_team,
+    ifelse(player_team == away_team, home_team, NA)
+  )) %>%
   select(-week.x, -week.y, -home_team, -away_team, -game_id)
 final_result_wr <- final_result_wr %>%
   left_join(def_stats_allowed_test, by = c("defteam" = "defteam"))
-
-###################################################################
 result_home_te <- sched %>%
   left_join(weekly_stats_test_te, by = c("home_team" = "posteam"))
 result_away_te <- sched %>%
   left_join(weekly_stats_test_te, by = c("away_team" = "posteam"))
 final_result_te <- bind_rows(result_home_te, result_away_te) %>%
-  mutate(
-    posteam = ifelse(
-      player_team == home_team,
-      home_team,
-      ifelse(
-        player_team == away_team,
-        away_team,
-        NA
-      )
-    )
-  ) %>%
-  mutate(
-    defteam = ifelse(
-      player_team == home_team,
-      away_team,
-      ifelse(
-        player_team == away_team,
-        home_team,
-        NA
-      )
-    )
-  ) %>%
+  mutate(posteam = ifelse(
+    player_team == home_team,
+    home_team,
+    ifelse(player_team == away_team, away_team, NA)
+  )) %>%
+  mutate(defteam = ifelse(
+    player_team == home_team,
+    away_team,
+    ifelse(player_team == away_team, home_team, NA)
+  )) %>%
   select(-week.x, -week.y, -home_team, -away_team, -game_id)
 final_result_te <- final_result_te %>%
   left_join(def_stats_allowed_test, by = c("defteam" = "defteam"))
-
-
-# target variables for feature selection
+# feature selection by position
 target_variables <- c(
-  "passing_yards",
-  "passing_tds",
-  "interceptions",
-  "sack_fumbles_lost",
-  "passing_2pt_conversions",
-  "rushing_yards",
-  "rushing_tds",
-  "rushing_fumbles_lost",
-  "rushing_2pt_conversions",
-  "receptions",
-  "receiving_yards",
-  "receiving_tds",
-  "receiving_fumbles_lost",
+  "passing_yards", "passing_tds", "interceptions", "sack_fumbles_lost",
+  "passing_2pt_conversions", "rushing_yards", "rushing_tds",
+  "rushing_fumbles_lost", "rushing_2pt_conversions", "receptions",
+  "receiving_yards", "receiving_tds", "receiving_fumbles_lost",
   "receiving_2pt_conversions"
 )
 exclude_columns <- c(
-  "player_id",
-  "player_name",
-  "player_team",
-  "position",
-  "week",
-  "fantasy_points",
-  "fantasy_points_ppr",
-  "fan_points_half_ppr",
-  "posteam",
-  "defteam"
+  "player_id", "player_name", "player_team", "position",
+  "week", "fantasy_points", "fantasy_points_ppr",
+  "fan_points_half_ppr", "posteam", "defteam"
 )
-
 selected_data <- merged_stats %>%
   select(-one_of(exclude_columns)) %>%
   select_if(function(col) is.factor(col) || is.numeric(col))
@@ -626,17 +438,10 @@ selected_data_te <- merged_stats %>%
   filter(position == "TE") %>%
   select(-one_of(exclude_columns)) %>%
   select_if(function(col) is.factor(col) || is.numeric(col))
-
 feature_selection_results <- data.frame(
-  Target = character(0),
-  Features = character(0)
+  Target = character(0), Features = character(0)
 )
-
-# All Positions - create a formula for lin reg model
-# Perform stepwise regression on selected_data
-# Make predictions for target variable
-# Create new column in merged_preds with the name pred_target_var
-
+# All positions: perform stepwise regression on selected_data
 for (target_var in target_variables) {
   formula <- as.formula(paste(target_var, "~ ."))
   model <- lm(formula, data = selected_data)
@@ -644,54 +449,17 @@ for (target_var in target_variables) {
   pred_column_name <- paste("pred", target_var, sep = "_")
   merged_stats_test[[pred_column_name]] <- test_predictions
 }
-merged_stats_test_important <- merged_stats_test %>%
-  select(
-    player_name,
-    position,
-    passing_yards,
-    pred_passing_yards,
-    passing_tds,
-    pred_passing_tds,
-    interceptions,
-    pred_interceptions,
-    sack_fumbles_lost,
-    pred_sack_fumbles_lost,
-    passing_2pt_conversions,
-    pred_passing_2pt_conversions,
-    rushing_yards,
-    pred_rushing_yards,
-    rushing_tds,
-    pred_rushing_tds,
-    rushing_fumbles_lost,
-    pred_rushing_fumbles_lost,
-    rushing_2pt_conversions,
-    pred_rushing_2pt_conversions,
-    receptions,
-    pred_receptions,
-    receiving_yards,
-    pred_receiving_yards,
-    receiving_tds,
-    pred_receiving_tds,
-    receiving_2pt_conversions,
-    pred_receiving_2pt_conversions,
-    fantasy_points_ppr
-  )
-
-####################################
 # Individual Positions: Add pred_fantasy_points column
-## QB
 qb_pred <- final_result_qb %>%
   select(player_name, player_team, position, defteam)
 for (target_var in target_variables) {
+  # Create a formula for the linear regression model
   formula <- as.formula(paste(target_var, "~ ."))
   model <- lm(formula, data = selected_data_qb)
   test_predictions <- predict(model, newdata = final_result_qb)
   pred_column_name <- paste("pred", target_var, sep = "_")
   qb_pred[[pred_column_name]] <- test_predictions
 }
-
-####################################
-## RB
 rb_pred <- final_result_rb %>%
   select(player_name, player_team, position, defteam)
 for (target_var in target_variables) {
@@ -701,9 +469,6 @@ for (target_var in target_variables) {
   pred_column_name <- paste("pred", target_var, sep = "_")
   rb_pred[[pred_column_name]] <- test_predictions
 }
-
-####################################
-## WR
 wr_pred <- final_result_wr %>%
   select(player_name, player_team, position, defteam)
 for (target_var in target_variables) {
@@ -713,154 +478,84 @@ for (target_var in target_variables) {
   pred_column_name <- paste("pred", target_var, sep = "_")
   wr_pred[[pred_column_name]] <- test_predictions
 }
-
-####################################
-## TE
 te_pred <- final_result_te %>%
   select(player_name, player_team, position, defteam)
 for (target_var in target_variables) {
-  # Create a formula for the linear regression model
   formula <- as.formula(paste(target_var, "~ ."))
   model <- lm(formula, data = selected_data_te)
   test_predictions <- predict(model, newdata = final_result_te)
   pred_column_name <- paste("pred", target_var, sep = "_")
   te_pred[[pred_column_name]] <- test_predictions
 }
-
-#########################################################################
-# write final prediction in csv files
+# write predictions into csv files
 qb_pred <- qb_pred %>%
-  mutate(
-    pred_fantasy_points = (
-      (.04 * pred_passing_yards) +
-        (4 * pred_passing_tds) +
-        (-2 * pred_interceptions) +
-        (2 * pred_passing_2pt_conversions) +
-        (.1 * pred_rushing_yards) +
-        (6 * pred_rushing_tds) +
-        (-2 * pred_rushing_fumbles_lost) +
-        (2 * pred_rushing_2pt_conversions) +
-        (.1 * pred_receiving_yards) +
-        (.5 * pred_receptions) +
-        (6 * pred_receiving_tds) +
-        (-2 * pred_receiving_fumbles_lost) +
-        (2 * pred_receiving_2pt_conversions) +
-        (-2 * pred_sack_fumbles_lost)
-    )
-  )
-write.csv(qb_pred, "Data/qb_pred.csv")
+  mutate(pred_fantasy_points = (
+    (.04 * pred_passing_yards) + (4 * pred_passing_tds) +
+      (-2 * pred_interceptions) + (2 * pred_passing_2pt_conversions) +
+      (.1 * pred_rushing_yards) + (6 * pred_rushing_tds) +
+      (-2 * pred_rushing_fumbles_lost) + (2 * pred_rushing_2pt_conversions) +
+      (.1 * pred_receiving_yards) + (.5 * pred_receptions) +
+      (6 * pred_receiving_tds) + (-2 * pred_receiving_fumbles_lost) +
+      (2 * pred_receiving_2pt_conversions) + (-2 * pred_sack_fumbles_lost)
+  ))
 rb_pred <- rb_pred %>%
-  mutate(
-    pred_fantasy_points = (
-      (.04 * pred_passing_yards) +
-        (4 * pred_passing_tds) +
-        (-2 * pred_interceptions) +
-        (2 * pred_passing_2pt_conversions) +
-        (.1 * pred_rushing_yards) +
-        (6 * pred_rushing_tds) +
-        (-2 * pred_rushing_fumbles_lost) +
-        (2 * pred_rushing_2pt_conversions) +
-        (.1 * pred_receiving_yards) +
-        (.5 * pred_receptions) +
-        (6 * pred_receiving_tds) +
-        (-2 * pred_receiving_fumbles_lost) +
-        (2 * pred_receiving_2pt_conversions) +
-        (-2 * pred_sack_fumbles_lost)
-    )
-  )
-write.csv(rb_pred, "Data/rb_pred.csv")
+  mutate(pred_fantasy_points = (
+    (.04 * pred_passing_yards) + (4 * pred_passing_tds) + 
+      (-2 * pred_interceptions) + (2 * pred_passing_2pt_conversions) +
+      (.1 * pred_rushing_yards) + (6 * pred_rushing_tds) +
+      (-2 * pred_rushing_fumbles_lost) + (2 * pred_rushing_2pt_conversions) +
+      (.1 * pred_receiving_yards) + (.5 * pred_receptions) +
+      (6 * pred_receiving_tds) + (-2 * pred_receiving_fumbles_lost) +
+      (2 * pred_receiving_2pt_conversions) + (-2 * pred_sack_fumbles_lost)
+  ))
 wr_pred <- wr_pred %>%
-  mutate(
-    pred_fantasy_points = (
-      (.04 * pred_passing_yards) +
-        (4 * pred_passing_tds) +
-        (-2 * pred_interceptions) +
-        (2 * pred_passing_2pt_conversions) +
-        (.1 * pred_rushing_yards) +
-        (6 * pred_rushing_tds) +
-        (-2 * pred_rushing_fumbles_lost) +
-        (2 * pred_rushing_2pt_conversions) +
-        (.1 * pred_receiving_yards) +
-        (.5 * pred_receptions) +
-        (6 * pred_receiving_tds) +
-        (-2 * pred_receiving_fumbles_lost) +
-        (2 * pred_receiving_2pt_conversions) +
-        (-2 * pred_sack_fumbles_lost)
-    )
-  )
-write.csv(wr_pred, "Data/wr_pred.csv")
+  mutate(pred_fantasy_points = (
+    (.04 * pred_passing_yards) + (4 * pred_passing_tds) +
+      (-2 * pred_interceptions) + (2 * pred_passing_2pt_conversions) +
+      (.1 * pred_rushing_yards) + (6 * pred_rushing_tds) +
+      (-2 * pred_rushing_fumbles_lost) + (2 * pred_rushing_2pt_conversions) +
+      (.1 * pred_receiving_yards) + (.5 * pred_receptions) +
+      (6 * pred_receiving_tds) + (-2 * pred_receiving_fumbles_lost) +
+      (2 * pred_receiving_2pt_conversions) + (-2 * pred_sack_fumbles_lost)
+  ))
 te_pred <- te_pred %>%
-  mutate(
-    pred_fantasy_points = (
-      (.04 * pred_passing_yards) +
-        (4 * pred_passing_tds) +
-        (-2 * pred_interceptions) +
-        (2 * pred_passing_2pt_conversions) +
-        (.1 * pred_rushing_yards) +
-        (6 * pred_rushing_tds) +
-        (-2 * pred_rushing_fumbles_lost) +
-        (2 * pred_rushing_2pt_conversions) +
-        (.1 * pred_receiving_yards) +
-        (.5 * pred_receptions) +
-        (6 * pred_receiving_tds) +
-        (-2 * pred_receiving_fumbles_lost) +
-        (2 * pred_receiving_2pt_conversions) +
-        (-2 * pred_sack_fumbles_lost)
-    )
-  )
+  mutate(pred_fantasy_points = (
+    (.04 * pred_passing_yards) + (4 * pred_passing_tds) +
+      (-2 * pred_interceptions) + (2 * pred_passing_2pt_conversions) +
+      (.1 * pred_rushing_yards) + (6 * pred_rushing_tds) +
+      (-2 * pred_rushing_fumbles_lost) + (2 * pred_rushing_2pt_conversions) +
+      (.1 * pred_receiving_yards) + (.5 * pred_receptions) +
+      (6 * pred_receiving_tds) + (-2 * pred_receiving_fumbles_lost) +
+      (2 * pred_receiving_2pt_conversions) + (-2 * pred_sack_fumbles_lost)
+  ))
+write.csv(qb_pred, "Data/qb_pred.csv")
+write.csv(rb_pred, "Data/rb_pred.csv")
+write.csv(wr_pred, "Data/wr_pred.csv")
 write.csv(te_pred, "Data/te_pred.csv")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-###########################################################################
-###########################################################################
-########## POSITION MODELING ##############################################
-###########################################################################
-###########################################################################
-
+# ----------------------------------------------
+# PLAYER MODELING BY POSITION
+# ----------------------------------------------
 # load data by position
-pbp_2020 <- nflreadr::load_pbp(2020)
-qbs <- nflreadr::load_player_stats(2020) %>%
+qbs <- player_stats %>%
   filter(position == "QB")
-wrs <- nflreadr::load_player_stats(2020) %>%
+wrs <- player_stats %>%
   filter(position == "WR")
-rbs <- nflreadr::load_player_stats(2020) %>%
+rbs <- player_stats %>%
   filter(position == "RB")
-tes <- nflreadr::load_player_stats(2020) %>%
+tes <- player_stats %>%
   filter(position == "TE")
-
 # load play-by-play data
 pbp_2020_join <- pbp_2020 %>%
-  dplyr::select(
-    home_team,
-    away_team,
-    week,
-    posteam,
-    posteam_type,
-    defteam,
-    roof,
-    surface,
-    spread_line,
-    temp,
-    wind
+  select(
+    home_team, away_team, week, posteam, posteam_type, defteam,
+    roof, surface, spread_line, temp, wind
   )
 pbp_2020_join$recent_team <- pbp_2020_join$posteam
 pbp_2020_join <- pbp_2020_join %>%
   filter(!is.na(recent_team)) %>%
   distinct()
-
 # load quarterbacks
 qbs <- qbs %>%
   group_by(player_id) %>%
@@ -912,7 +607,6 @@ qb_rolling <- qbs %>%
   ) %>%
   ungroup() %>%
   group_by("player_id")
-
 # load wide receivers 
 wrs <- wrs %>%
   group_by(player_id) %>%
@@ -954,8 +648,7 @@ wr_rolling <- wrs %>%
     last_rush_yards,
     last_receiving_yards
   ) %>%
-  ungroup()
-
+  ungroup()# load running backs
 # load running backs
 rbs <- rbs %>%
   group_by(player_id) %>%
@@ -997,7 +690,6 @@ rb_rolling <- rbs %>%
     last_receiving_yards
   ) %>%
   ungroup()
-
 # load tight ends
 tes <- tes %>%
   group_by(player_id) %>%
@@ -1039,8 +731,6 @@ te_rolling <- tes %>%
     last_receiving_yards
   ) %>%
   ungroup()
-
-
 # join position players & play-by-play 
 qb_extra <- inner_join(
   pbp_2020_join, qbs, by = c("week", "recent_team")
@@ -1056,7 +746,6 @@ te_extra <- inner_join(
   tes,
   by = c("week", "recent_team")
 )
-
 # fixing spread variable
 qb_extra <- qb_extra %>%
   mutate(
@@ -1118,7 +807,6 @@ te_extra <- te_extra %>%
   ) %>%
   group_by(player_name) %>%
   mutate(row_count = n())
-
 set.seed(10)
 # Model train/test
 qb_model <- qb_extra %>%
@@ -1166,11 +854,6 @@ qb_lmer <- lmer(
 qb_pred_mem <- predict(qb_lmer, newdata = qb_test)
 qb_test$pred <- qb_pred_mem
 qb_extra$pred <- predict(qb_lmer, new_data = qb_extra, allow.new.levels = TRUE)
-qb_test <- qb_test %>%
-  group_by(player_name) %>%
-  mutate(row_count = n())
-
-
 wr_model <- wr_extra %>%
   dplyr::select(
     week,
@@ -1216,8 +899,6 @@ wr_lmer <- lmer(
 wr_extra <- wr_extra %>%
   filter(!is.na(avg_fantasy_pts))
 wr_extra$pred <- predict(wr_lmer)
-
-
 rb_model <- rb_extra %>%
   dplyr::select(
     week,
@@ -1252,8 +933,6 @@ rb_lmer <- lmer(
 rb_extra <- rb_extra %>%
   filter(!is.na(avg_fantasy_pts))
 rb_extra$pred <- predict(rb_lmer)
-
-
 te_model <- te_extra %>%
   dplyr::select(
     week,
@@ -1289,61 +968,24 @@ te_extra <- te_extra %>%
 te_extra$pred <- predict(te_lmer)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#################################################################
-#################################################################
-########### DEFENSIVE MODELING ##################################
-#################################################################
-#################################################################
-
-# pbp_2020 defined in start of position modeling 
-all <- load_player_stats(2020)
+# ----------------------------------------------
+# DEFENSIVE MODELING BY TEAM
+# ----------------------------------------------
+all <- pbp_2020
 all2 <- pbp_2020 %>%
   filter(season_type == "REG") %>%
   nflfastR::calculate_player_stats_def(weekly = TRUE)
-
-all3 <- left_join(
-  all2, all,
-  by = c(
-    "season", "player_id", "player_name",
-    "player_display_name", "position", "position_group",
-    "week"
-  )
-)
+all3 <- left_join(all2, all, by = c(
+  "season", "player_id", "player_name",
+  "player_display_name", "position", "position_group",
+  "week"
+))
 defense_group <- all3 %>%
   filter(position_group == "DB" | position_group == "LB") %>%
   select(-c("headshot_url.x", "headshot_url.y")) %>%
   mutate_if(is.numeric, list(~replace_na(., 0))) %>%
-  mutate(
-    defense_total = def_sacks +
-    2 * interceptions +
-    2 * def_fumble_recovery_own +
-    2 * def_safety
+  mutate(defense_total = def_sacks + (2 * interceptions) +
+    (2 * def_fumble_recovery_own) + (2 * def_safety)
   )
 def_select <- defense_group %>%
   select(
@@ -1354,13 +996,9 @@ def_select <- defense_group %>%
   mutate(fantasy_total = fantasy_points + defense_total)
 def_team_stats <- def_select %>%
   group_by(season, week, team) %>%
-  summarize(
-    across(everything(), sum),
-    .groups = 'drop'
-  ) %>%
+  summarize(across(everything(), sum), .groups = "drop") %>%
   as.data.frame() %>%
   rename(defteam = team)
-
 offensive_team_stats <- pbp_2020 %>%
   nflfastR::calculate_player_stats(weekly = TRUE) %>%
   filter(!position_group %in% c("DB", "LB"), season_type == "REG")
@@ -1370,33 +1008,24 @@ offense_sel <- offensive_team_stats %>%
     "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds"
   ) %>%
   mutate(
-    td_points = rushing_tds * 7 + passing_tds * 7,
+    td_points = (rushing_tds * 7) + (passing_tds * 7),
     total_yards = rushing_yards + passing_yards
   )
 off_team_stats <- offense_sel %>%
   group_by(season, week, recent_team) %>%
-  summarize(
-    across(everything(), sum),
-    .groups = "drop"
-  ) %>%
+  summarize(across(everything(), sum), .groups = "drop") %>%
   as.data.frame() %>%
   rename(posteam = recent_team)
-
 pbp_join <- pbp_2020 %>%
   select(week, posteam, defteam)
-
 off_team_total <- left_join(
-  off_team_stats,
-  pbp_join,
-  by = c("posteam", "week")
+  off_team_stats, pbp_join, by = c("posteam", "week")
 ) %>%
   distinct()
 def_team_stats_nec <- def_team_stats %>%
   select("week", "defteam", "fantasy_total")
 combo <- left_join(
-  off_team_total,
-  def_team_stats_nec,
-  by = c("week", "defteam")
+  off_team_total, def_team_stats_nec, by = c("week", "defteam")
 )
 
 # kicking / field goal points
@@ -1407,22 +1036,19 @@ kicking_stats <- pbp_2020 %>%
   rename(posteam = team)
 kicking_stats[is.na(kicking_stats)] <- 0
 final_set <- left_join(
-  combo,
-  kicking_stats,
+  combo, kicking_stats,
   by = c("week", "posteam")
 ) %>%
   mutate(off_points = fg_points + td_points) %>%
-  mutate(
-    points_allowed = case_when(
-      off_points < 1 ~ 10,
-      off_points > 0 & off_points < 7 ~ 7,
-      off_points > 6 & off_points < 14 ~ 4,
-      off_points > 13 & off_points < 21 ~ 1,
-      off_points > 20 & off_points < 28 ~ 0,
-      off_points > 27 & off_points < 35 ~ -1,
-      off_points > 34 ~ -4
-    )
-  ) %>%
+  mutate(points_allowed = case_when(
+    off_points < 1 ~ 10,
+    off_points > 0 & off_points < 7 ~ 7,
+    off_points > 6 & off_points < 14 ~ 4,
+    off_points > 13 & off_points < 21 ~ 1,
+    off_points > 20 & off_points < 28 ~ 0,
+    off_points > 27 & off_points < 35 ~ -1,
+    off_points > 34 ~ -4
+  )) %>%
   mutate(points = points_allowed + fantasy_total) %>%
   arrange(defteam, week) %>%
   group_by(defteam) %>%
@@ -1433,29 +1059,24 @@ final_set <- left_join(
     avg_points = lag(rollapplyr(points, 5, mean, partial = TRUE))
   ) %>%
   filter(!is.na(avg_yards))
-
 # linear modeling 
 linear_mod <- lm(
   points ~ avg_yards + avg_points + avg_offpoints,
   data = final_set
 )
 def_lin_predictions <- predict(
-  linear_mod,
-  new_data = final_set,
+  linear_mod, new_data = final_set,
   allow.new.levels = TRUE
 )
-
 # mixed effects model
 def_lmer <- lmer(
   points ~ avg_yards + avg_offpoints + (1|posteam),
   data = final_set
 )
 def_mixed_predictions <- predict(
-  def_lmer,
-  new_data = final_set,
+  def_lmer, new_data = final_set,
   allow.new.levels = TRUE
 )
-
 
 # Individual Defense
 defense_group_indiv <- defense_group %>%
@@ -1494,41 +1115,9 @@ indiv_def_lmer <- lmer(
 )
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###########################################################################
-###########################################################################
-################ KICKING FANTASY PREDICTION ###############################
-###########################################################################
-###########################################################################
-
-# previously define def_stats load_pbp(2020:2022)
+# ----------------------------------------------
+# Kicking Models
+# ----------------------------------------------
 kick_stats <- def_stats %>%
   filter(field_goal_attempt == 1 | extra_point_attempt == 1) %>%
   select(
@@ -1563,7 +1152,6 @@ kick_stats <- def_stats %>%
     xp_missed = sum(xp_missed)
   ) %>%
   mutate(kick_fan_points = fg_points - fg_missed - xp_missed)
-
 blocked_kicks <- def_stats %>%
   select(game_id, week, defteam, field_goal_result, extra_point_result) %>%
   filter(!is.na(defteam)) %>%
@@ -1577,7 +1165,6 @@ blocked_kicks <- def_stats %>%
   group_by(game_id, week, defteam) %>%
   summarise(fg_blocked = sum(fg_blocked), xp_blocked = sum(xp_blocked)) %>%
   ungroup()
-
 defense_stats <- def_stats %>%
   filter(!is.na(posteam)) %>%
   select(
@@ -1595,7 +1182,6 @@ defense_stats <- def_stats %>%
     sacks_forced = sum(sack)
   ) %>%
   ungroup()
-
 off_stats <- def_stats %>%
   select(
     game_id, week, posteam, defteam, yards_gained,
@@ -1612,57 +1198,41 @@ off_stats <- def_stats %>%
     xp_attempts = sum(extra_point_attempt)
   ) %>%
   ungroup()
-
 kick_fantasy_points <- kick_stats %>%
   select(game_id, kicker_player_name, posteam, kick_fan_points )
-
 combined <- off_stats %>%
   left_join(kick_fantasy_points, by = c("game_id", "posteam")) %>%
   left_join(def_stats, by = c("game_id", "week", "posteam", "defteam")) %>%
   left_join(blocked_kicks, by = c("game_id", "week", "defteam"))
-
 kick_fan_score_model_train <- combined %>%
   select(-c(
     game_id, week, defteam, posteam, kicker_player_id, kicker_player_name
   ))
-
 kick_fan_score_model_test <- combined_test %>%
   select(-c(
     game_id, week, defteam, posteam, kicker_player_id,
     kicker_player_name, kick_fan_points
   ))
-
 kicking_lm_model <- lm(kick_fan_points ~ ., data = kick_fan_score_model_train)
-
 kick_fantasy_points_actual_lm <- kick_fantasy_points_actual
-
 test_predictions_lm <- predict(
   kicking_lm_model, newdata = kick_fan_score_model_test
 )
-
 kick_fantasy_points_actual_lm$pred_fan_points <- test_predictions_lm
-
 model <- regsubsets(kick_fan_points ~ ., data = kick_fan_score_model_train)
-
 best_model_1 <- which.max(summary(model)$adjr2)
-
 best_model_2 <- lm(
   kick_fan_points ~ off_total_yds + off_drives_inside20 +
   interceptions_forced + fumbles_forced + total_yards_allowed  +
   fg_blocked + fg_attempts,
   data = kick_fan_score_model_train
 )
-
 kick_fantasy_points_actual_best <- kick_fantasy_points_actual
-
 test_predictions_best <- predict(
   best_model, newdata = kick_fan_score_model_test
 )
-
 kick_fantasy_points_actual_best$pred_fan_points <- test_predictions_best
-
 # regression
-
 response_variable <- "kick_fan_points"
 # Select predictors and response variable for training set
 kick_fan_score_model_train <- combined %>%
@@ -1675,7 +1245,6 @@ kick_fan_score_model_test <- combined_test %>%
   select(-c(
     game_id, defteam, posteam, kicker_player_name, kick_fan_points
   ))
-
 # Convert to matrix format (required by glmnet)
 X_train <- as.matrix(kick_fan_score_model_train %>% select(-response_variable))
 y_train <- kick_fan_score_model_train[[response_variable]]
@@ -1692,12 +1261,10 @@ ridge_model_summary <- data.frame(
   coefficient = c(ridge_intercept, ridge_coef)
 )
 
-##################################################################
-##################################################################
-############ FANTASY POINTS DATAFRAME ############################
-##################################################################
-##################################################################
 
+# ----------------------------------------------
+# FANTASY POINTS DATAFRAME
+# ----------------------------------------------
 positions_2023 = read.csv('Data/roster_weekly_2023.csv')
 positions_2022 = read.csv('Data/roster_weekly_2022.csv')
 positions_2021 = read.csv('Data/roster_weekly_2021.csv')
@@ -1715,12 +1282,10 @@ positions <- rbind(
     sep = " ",
     remove = FALSE
   )
-
 type_of_plays_train <- def_stats %>%
   group_by(game_id, posteam) %>%
   summarize(runs = sum(rush), passes = sum(pass)) %>%
   filter(!is.na(posteam))
-
 receiving_dataset_train <- def_stats %>%
   filter(pass == 1) %>%
   group_by(receiver_player_id, receiver_player_name, game_id, posteam ) %>%
@@ -1739,7 +1304,6 @@ receiving_dataset_train <- def_stats %>%
     avg_rec_epa = mean(epa)
   ) %>%
   ungroup()
-
 # Merge receiving and type_of_plays datasets
 receiving_merged_train <- merge(
   x = receiving_dataset_train, y = type_of_plays_train, all.x = TRUE
@@ -1755,7 +1319,6 @@ receiving_merged_train <- merge(
     receiving_yards, catches, targets, target_share, touchdowns,
     fumbles, avg_rec_epa
   )
-
 # Create a dataset for rushing statistics
 rushing_dataset_train <- def_stats %>%
   filter(rush == 1) %>%
@@ -1776,7 +1339,6 @@ rushing_dataset_train <- def_stats %>%
   ) %>%
   filter(!is.na(player_id)) %>%
   arrange(game_id)
-
 # Merge rushing and receiving datasets to create a fantasy dataset
 fantasy_merged_train <- full_join(
   x = rushing_dataset_train,
@@ -1791,7 +1353,6 @@ fantasy_merged_train <- full_join(
   select(-c(touchdowns.x, touchdowns.y, fumbles.x, fumbles.y)) %>%
   filter(!is.na(player_id)) %>%
   replace(is.na(.), 0)
-
 # Create a dataset for quarterback statistics
 qb_data_train <- def_stats %>% 
   filter(pass == 1) %>%
@@ -1814,7 +1375,6 @@ qb_data_train <- def_stats %>%
     incompletions, completions, attempts, passing_touchdowns,
     fumbles, interceptions, avg_throw_epa
   )
-
 # Merge quarterback statistics with the fantasy dataset
 fantasy_merged_new_train <- full_join(
   x=fantasy_merged_train,
@@ -1826,17 +1386,13 @@ fantasy_merged_new_train <- full_join(
   select(-c(fumbles.x, fumbles.y)) %>%
   filter(!is.na(player_id)) %>%
   replace(is.na(.), 0)
-
 sapply(fantasy_merged_new, function(x) sum(is.na(x)))
-
 calc_fantasy_pts <- fantasy_merged_new_train %>%
   mutate(
     fan_points = (.1 * rush_yards) +
     (.1 * receiving_yards) + (.5 * catches) + (.04 * passing_yards) +
     (4 * passing_touchdowns) + (-2 * interceptions) + (6 * touchdowns)
   )
-
 new <- left_join(x = calc_fantasy_pts, y = positions, by = "player_id") %>%
   filter(!is.na(position))
-
 sapply(new, function(x) sum(is.na(x)))
