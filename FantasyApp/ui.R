@@ -1,6 +1,6 @@
 libs <- c(
   "shiny", "ggplot2", "DT", "plotly",
-  "bslib", "gridlayout"
+  "bslib", "gridlayout", "fmsb"
 )
 invisible(lapply(libs, library, character.only = TRUE))
 
@@ -120,17 +120,11 @@ ui <- fluidPage(
           width = NULL,
           size = NULL
         ),
-        actionButton(
-          "submit",
-          star_mand("Submit"),
-          class = "btn-primary",
-          id = submit
-        )
+        actionButton("submit", star_mand("Submit"), class = "btn-primary")
       ),
       shinyjs::hidden(
         div(
           id = "roster_submit_msg",
-          h3("Roster Saved."),
           actionLink("resubmit_", "Resubmit Roster.")
         )
       ),
@@ -149,25 +143,68 @@ ui <- fluidPage(
           tabsetPanel(
             nav_panel(
               title = "Home",
-              h3("My Team"),
-              uiOutput("qb_info"),
-              tableOutput("qb_table")
+              h3("Fantasy Football"),
+              htmlOutput("intro_description"),
+              br(),
+              htmlOutput("problem_description"),
+              br(),
+              h3("Making Fantasy Football for Everyone"),
+              htmlOutput("short_app_description"),
+              br(),
+              htmlOutput("outro_description")
             ),
             nav_panel(
               title = "Upcoming Games",
               h3("Upcoming Games"),
               dataTableOutput("schedule")
             ),
+            nav_panel(title = "Roster Predictions",
+              h3("My Team"),
+              uiOutput("qb_info"),
+              dataTableOutput("qb_table"),
+              uiOutput("rb1_info"),
+              dataTableOutput("rb1_table"),
+              uiOutput("rb2_info"),
+              dataTableOutput("rb2_table"),
+              uiOutput("wr1_info"),
+              dataTableOutput("wr1_table"),
+              uiOutput("wr2_info"),
+              dataTableOutput("wr2_table"),
+              uiOutput("te_info"),
+              dataTableOutput("te_table")
+            ),
+            nav_panel(title = "Interactive Models",
+              plotlyOutput("radar_chart")
+            ),
             nav_panel(
-              title = "Predictions"
+              title = "Data",
+              h3("Quarterback Predicted Stats"),
+              dataTableOutput("qb_pred_table"),
+              br(),
+              h3("Wide Reciever Predicted Stats"),
+              dataTableOutput("wr_pred_table"),
+              br(),
+              h3("Tight End Predicted Stats"),
+              dataTableOutput("te_pred_table"),
+              br(),
+              h3("Running Back Predicted Stats"),
+              dataTableOutput("rb_pred_table")
             ),
             navbarMenu(
               title = "Learn",
-              tabPanel("About the Game"),
+              tabPanel("About the Game",
+                h3("An Introduction to American Football"),
+                htmlOutput("football_intro"),
+                br(),
+                htmlOutput("explaining_plays"),
+                h3("Scoring in Football"),
+                htmlOutput("explaining_scoring"),
+                h3("Defensive Strategies"),
+                htmlOutput("explaining_defense")
+              ),
               tabPanel("About the App"),
               tabPanel("About the Creators")
             )
-
           )
         )
       )
